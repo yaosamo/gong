@@ -100,15 +100,68 @@ export default function Home() {
     try {
       // Try to get location from browser
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000 });
+        navigator.geolocation.getCurrentPosition(
+          resolve, 
+          reject, 
+          { 
+            timeout: 5000,
+            enableHighAccuracy: false,
+            maximumAge: 300000 // Accept cached position up to 5 minutes old
+          }
+        );
       });
       
-      // Format location (you could use reverse geocoding API for city names)
-      locationString = `${position.coords.latitude.toFixed(2)}°, ${position.coords.longitude.toFixed(2)}°`;
+      // Reverse geocode coordinates to get city, state, country
+      try {
+        const response = await fetch(
+          `/api/geocode?lat=${position.coords.latitude}&lon=${position.coords.longitude}`
+        );
+        
+        if (!response.ok) {
+          throw new Error('Geocoding failed');
+        }
+        
+        const data = await response.json();
+        
+        // Extract city, state, and country from address
+        if (data && data.address) {
+          const city = data.address.city || 
+                      data.address.town || 
+                      data.address.village || 
+                      data.address.municipality ||
+                      data.address.suburb ||
+                      data.address.neighbourhood;
+          
+          const state = data.address.state || 
+                       data.address.region ||
+                       data.address.province;
+          
+          const country = data.address.country;
+          
+          // Format as "City, State, Country"
+          const parts = [];
+          if (city) parts.push(city);
+          if (state) parts.push(state);
+          if (country) parts.push(country);
+          
+          if (parts.length > 0) {
+            locationString = parts.join(', ');
+          } else {
+            // If no address parts, try to use display_name
+            locationString = data.display_name?.split(',')[0] || `${position.coords.latitude.toFixed(2)}°, ${position.coords.longitude.toFixed(2)}°`;
+          }
+        } else {
+          locationString = `${position.coords.latitude.toFixed(2)}°, ${position.coords.longitude.toFixed(2)}°`;
+        }
+      } catch (geocodeError) {
+        // If reverse geocoding fails, show coordinates
+        locationString = `${position.coords.latitude.toFixed(2)}°, ${position.coords.longitude.toFixed(2)}°`;
+      }
     } catch (error) {
-      // If location access denied or unavailable, use timezone as fallback
-      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      locationString = timeZone.replace(/_/g, ' ');
+      // If location access denied or unavailable, try to get approximate location from IP
+      // For now, fall back to showing coordinates would be better than timezone
+      // But since we can't get coordinates, we'll show a generic message
+      locationString = 'Location unavailable';
     }
     
     // Generate random position for timestamp
