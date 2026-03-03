@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Gong
 
-## Getting Started
+A celebratory web app where people strike a gong, leave a note, and watch the page fill with live celebrations.
 
-First, run the development server:
+## Original Plan
+
+This project started from the following product direction:
+
+1. The homepage should center around a rich gong experience, ideally with a 3D gong and a clean white page.
+2. The page should show other visitors' cursors in a Figma-style presence layer.
+3. Hitting the gong should open a dialog above it with:
+   - `What are you celebrating today?`
+   - a name field
+   - a submit button
+4. Celebration comments should appear as randomly placed blocks on the page.
+5. Each celebration should automatically include location by IP and a server-determined date.
+6. Older celebrations should fade over time, and only about 40 should remain visible on the page before older ones disappear.
+7. A celebration log button should open a full history view showing date, author, and comment.
+
+## Current Direction
+
+The current implementation is focused on getting the visual foundation right first:
+
+- Full-screen 3D gong and torii composition
+- Minimal white atmospheric stage
+- Camera-tunable scene for composition work
+- Celebration overlays and log infrastructure kept in place while the visual system is refined
+
+The next functional step is to connect the ring action back into the celebration submission flow once the scene layout is finalized.
+
+## Local development
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The app runs locally without external services using a file-based fallback store.
 
-## Learn More
+Optional Supabase env vars enable persistent shared data and realtime presence:
 
-To learn more about Next.js, take a look at the following resources:
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Optional IP geolocation env var:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `IPINFO_TOKEN`

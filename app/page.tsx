@@ -1,224 +1,330 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useState } from "react";
+import { CelebrationBoard } from "@/components/celebration-board";
+import { CelebrationLog } from "@/components/celebration-log";
+import { CelebrationModal } from "@/components/celebration-modal";
+import { GongScene } from "@/components/gong-scene";
+import { LiveCursors } from "@/components/live-cursors";
+import type { Celebration } from "@/lib/types";
 
-interface GongTimestamp {
-  id: string;
-  time: string;
-  location: string;
-  x: number;
-  y: number;
-}
+export default function HomePage() {
+  const [celebrations, setCelebrations] = useState<Celebration[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLogOpen, setIsLogOpen] = useState(false);
+  const [isStriking, setIsStriking] = useState(false);
+  const [hasRung, setHasRung] = useState(false);
+  const [showControls, setShowControls] = useState(false);
+  const [cameraPosition, setCameraPosition] = useState({ x: -6.17, y: -0.26, z: 6.24 });
 
-export default function Home() {
-  const [timestamps, setTimestamps] = useState<GongTimestamp[]>([]);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Initialize audio context
   useEffect(() => {
-    audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    return () => {
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
+    let cancelled = false;
+
+    async function loadCelebrations() {
+      const response = await fetch("/api/celebrations", { cache: "no-store" });
+      const data = (await response.json()) as { celebrations: Celebration[] };
+
+      if (!cancelled) {
+        setCelebrations(data.celebrations);
       }
+    }
+
+    loadCelebrations();
+
+    return () => {
+      cancelled = true;
     };
   }, []);
 
-  // Fetch timestamps from server
-  const fetchTimestamps = async () => {
-    try {
-      const response = await fetch('/api/timestamps');
-      const data = await response.json();
-      
-      // Replace with server timestamps (handles deletions and new additions)
-      setTimestamps(prev => {
-        const serverIds = new Set(data.timestamps.map((t: GongTimestamp) => t.id));
-        const optimisticTimestamps = prev.filter(t => !serverIds.has(t.id)); // Keep optimistic ones not yet on server
-        return [...optimisticTimestamps, ...data.timestamps];
-      });
-    } catch (error) {
-      // Silently handle errors
-    }
-  };
-
-  // Load initial timestamps and start polling
   useEffect(() => {
-    fetchTimestamps();
-    
-    // Poll every 1 second for updates
-    pollingIntervalRef.current = setInterval(fetchTimestamps, 1000);
-    
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setShowControls((current) => {
+          const next = !current;
+          if (!next) {
+            setIsLogOpen(false);
+          }
+          return next;
+        });
       }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
     };
   }, []);
 
-  const playGongSound = async () => {
-    if (!audioContextRef.current) return;
-    
-    // Resume audio context if suspended (required for some browsers)
-    if (audioContextRef.current.state === 'suspended') {
-      await audioContextRef.current.resume();
-    }
-    
-    const audioContext = audioContextRef.current;
-    
-    // Create a gong-like sound using Web Audio API
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    // Gong sound: start high frequency, decay quickly
-    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(200, audioContext.currentTime + 0.5);
-    
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1);
-    
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 1);
-  };
-
-  const handleGongClick = async () => {
-    playGongSound();
-    
-    // Get user's time and location
-    const now = new Date();
-    const timeString = now.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      timeZoneName: 'short'
-    });
-    
-    let locationString = 'Unknown';
-    try {
-      // Try to get location from browser
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(
-          resolve, 
-          reject, 
-          { 
-            timeout: 5000,
-            enableHighAccuracy: false,
-            maximumAge: 300000 // Accept cached position up to 5 minutes old
-          }
-        );
-      });
-      
-      // Reverse geocode coordinates to get city, state, country
-      try {
-        const response = await fetch(
-          `/api/geocode?lat=${position.coords.latitude}&lon=${position.coords.longitude}`
-        );
-        
-        if (!response.ok) {
-          throw new Error('Geocoding failed');
-        }
-        
-        const data = await response.json();
-        
-        // Extract city, state, and country from address
-        if (data && data.address) {
-          const city = data.address.city || 
-                      data.address.town || 
-                      data.address.village || 
-                      data.address.municipality ||
-                      data.address.suburb ||
-                      data.address.neighbourhood;
-          
-          const state = data.address.state || 
-                       data.address.region ||
-                       data.address.province;
-          
-          const country = data.address.country;
-          
-          // Format as "City, State, Country"
-          const parts = [];
-          if (city) parts.push(city);
-          if (state) parts.push(state);
-          if (country) parts.push(country);
-          
-          if (parts.length > 0) {
-            locationString = parts.join(', ');
-          } else {
-            // If no address parts, try to use display_name
-            locationString = data.display_name?.split(',')[0] || `${position.coords.latitude.toFixed(2)}°, ${position.coords.longitude.toFixed(2)}°`;
-          }
-        } else {
-          locationString = `${position.coords.latitude.toFixed(2)}°, ${position.coords.longitude.toFixed(2)}°`;
-        }
-      } catch (geocodeError) {
-        // If reverse geocoding fails, show coordinates
-        locationString = `${position.coords.latitude.toFixed(2)}°, ${position.coords.longitude.toFixed(2)}°`;
-      }
-    } catch (error) {
-      // If location access denied or unavailable, try to get approximate location from IP
-      // For now, fall back to showing coordinates would be better than timezone
-      // But since we can't get coordinates, we'll show a generic message
-      locationString = 'Location unavailable';
-    }
-    
-    // Generate random position for timestamp
-    const newTimestamp: GongTimestamp = {
-      id: Math.random().toString(36).substr(2, 9),
-      time: timeString,
-      location: locationString,
-      x: Math.random() * 80 + 10, // 10% to 90% of screen width
-      y: Math.random() * 80 + 10, // 10% to 90% of screen height
-    };
-    
-    // OPTIMISTIC UPDATE: Show immediately
-    setTimestamps(prev => [...prev, newTimestamp]);
-    
-    // Send to server (fire and forget)
-    fetch('/api/timestamps', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: newTimestamp.id,
-        time: newTimestamp.time,
-        location: newTimestamp.location,
-        x: newTimestamp.x,
-        y: newTimestamp.y
-      })
-    }).catch(() => {
-      // Silently handle errors - timestamp already shown optimistically
-    });
-  };
+  function strike() {
+    setHasRung(true);
+    setIsStriking(true);
+    window.setTimeout(() => setIsStriking(false), 850);
+  }
 
   return (
-    <div className="fixed inset-0 bg-white flex items-center justify-center">
-      {/* Gong Circle */}
-      <button
-        onClick={handleGongClick}
-        className="w-32 h-32 rounded-full border-4 border-gray-800 bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center text-2xl font-bold text-gray-800 shadow-lg hover:shadow-xl transition-all duration-200 active:scale-95 cursor-pointer focus:outline-none focus:ring-4 focus:ring-amber-300"
-      >
-        GONG
-      </button>
+    <main
+      style={{
+        height: "100vh",
+        position: "relative",
+        overflow: "hidden",
+        padding: 0,
+      }}
+    >
+      <LiveCursors />
+      <CelebrationBoard celebrations={celebrations} />
 
-      {/* Timestamps displayed in random positions */}
-      {timestamps.map((timestamp) => (
-        <div
-          key={timestamp.id}
-          className="absolute pointer-events-none text-sm text-gray-600 font-mono"
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(circle at 50% 52%, rgba(214, 176, 91, 0.16), transparent 18%), radial-gradient(circle at 50% 16%, rgba(255, 255, 255, 0.28), transparent 24%), linear-gradient(180deg, rgba(255,255,255,0.24) 0%, rgba(244,240,230,0.08) 100%)",
+          pointerEvents: "none",
+          zIndex: 2,
+        }}
+      />
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(circle at center, transparent 42%, rgba(255, 255, 255, 0.26) 100%)",
+          pointerEvents: "none",
+          zIndex: 3,
+        }}
+      />
+
+      {showControls ? (
+        <header
           style={{
-            left: `${timestamp.x}%`,
-            top: `${timestamp.y}%`,
-            transform: 'translate(-50%, -50%)',
+            position: "absolute",
+            inset: "24px 24px auto 24px",
+            zIndex: 12,
+            display: "flex",
+            justifyContent: "flex-end",
+            alignItems: "center",
+            gap: 24,
           }}
         >
-          <div className="bg-white/80 backdrop-blur-sm px-2 py-1 rounded border border-gray-200 shadow-sm">
-            <div className="font-semibold">{timestamp.time}</div>
-            <div className="text-xs text-gray-500">{timestamp.location}</div>
+          <button
+            onClick={() => setIsLogOpen(true)}
+            type="button"
+            style={{
+              position: "relative",
+              zIndex: 12,
+              borderRadius: 999,
+              border: "1px solid rgba(16, 17, 18, 0.12)",
+              background: "rgba(255, 255, 255, 0.76)",
+              padding: "14px 18px",
+              boxShadow: "0 18px 30px rgba(17, 24, 39, 0.06)",
+            }}
+          >
+            Celebration Log
+          </button>
+        </header>
+      ) : null}
+
+      <section
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 4,
+          width: "100vw",
+          height: "100vh",
+        }}
+      >
+        <GongScene
+          isStriking={isStriking}
+          onStrike={strike}
+          onCameraChange={setCameraPosition}
+        />
+      </section>
+
+      {hasRung ? (
+        <div
+          style={{
+            position: "absolute",
+            top: 96,
+            right: 32,
+            bottom: 96,
+            zIndex: 12,
+            width: "min(380px, 34vw)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+            overflow: "hidden",
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              overflowY: "auto",
+              paddingRight: 4,
+            }}
+          >
+            {celebrations.length ? (
+              celebrations.slice(0, 8).map((celebration) => (
+                <article
+                  key={celebration.id}
+                  style={{
+                    padding: 14,
+                    borderRadius: 20,
+                    border: "1px solid rgba(16, 17, 18, 0.08)",
+                    background: "rgba(255, 255, 255, 0.74)",
+                    backdropFilter: "blur(14px)",
+                    boxShadow: "0 14px 34px rgba(17, 24, 39, 0.08)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      fontSize: 13,
+                      color: "rgba(16, 17, 18, 0.5)",
+                    }}
+                  >
+                    <span>{celebration.name}</span>
+                    <span>{celebration.locationLabel}</span>
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 15,
+                      lineHeight: 1.45,
+                      color: "rgba(16, 17, 18, 0.88)",
+                    }}
+                  >
+                    {celebration.comment}
+                  </div>
+                </article>
+              ))
+            ) : (
+              <div
+                style={{
+                  padding: 16,
+                  borderRadius: 20,
+                  border: "1px dashed rgba(16, 17, 18, 0.16)",
+                  background: "rgba(255, 255, 255, 0.44)",
+                  color: "rgba(16, 17, 18, 0.5)",
+                  fontSize: 15,
+                  lineHeight: 1.45,
+                }}
+              >
+                No celebrations yet. Ring the gong to start the page.
+              </div>
+            )}
           </div>
         </div>
-      ))}
-    </div>
+      ) : (
+        <div
+          style={{
+            position: "absolute",
+            top: "50%",
+            right: 48,
+            transform: "translateY(-54%)",
+            zIndex: 12,
+            width: "min(520px, 42vw)",
+            pointerEvents: "none",
+            textAlign: "left",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "clamp(44px, 7vw, 108px)",
+              lineHeight: 0.9,
+              letterSpacing: "-0.06em",
+              fontWeight: 500,
+              color: "rgba(17, 17, 17, 0.94)",
+              textWrap: "balance",
+            }}
+          >
+            Gong to celebrate!
+          </div>
+        </div>
+      )}
+
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          bottom: 34,
+          transform: "translateX(-50%)",
+          zIndex: 12,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 10,
+          borderRadius: 999,
+          border: "1px solid rgba(16, 17, 18, 0.08)",
+          background: "rgba(255, 255, 255, 0.72)",
+          backdropFilter: "blur(16px)",
+          padding: "12px 16px",
+          boxShadow: "0 18px 40px rgba(17, 24, 39, 0.08)",
+          pointerEvents: "none",
+        }}
+      >
+        <div
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 999,
+            background: "#c63a29",
+            boxShadow: "0 0 18px rgba(198, 58, 41, 0.42)",
+          }}
+        />
+        <div style={{ fontSize: 16, color: "rgba(16, 17, 18, 0.62)" }}>Tap the gong</div>
+      </div>
+
+      {showControls ? (
+        <div
+          style={{
+            position: "absolute",
+            left: 24,
+            right: 24,
+            bottom: 24,
+            zIndex: 12,
+            display: "flex",
+            justifyContent: "flex-start",
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              borderRadius: 16,
+              border: "1px solid rgba(16, 17, 18, 0.08)",
+              background: "rgba(255, 255, 255, 0.72)",
+              backdropFilter: "blur(16px)",
+              padding: "10px 14px",
+              boxShadow: "0 18px 40px rgba(17, 24, 39, 0.08)",
+              fontSize: 13,
+              color: "rgba(16, 17, 18, 0.62)",
+            }}
+          >
+            {`camera: x ${cameraPosition.x}, y ${cameraPosition.y}, z ${cameraPosition.z}`}
+          </div>
+        </div>
+      ) : null}
+
+      <CelebrationLog
+        celebrations={celebrations}
+        isOpen={isLogOpen}
+        onClose={() => setIsLogOpen(false)}
+      />
+
+      <CelebrationModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSubmitted={(celebration) =>
+          setCelebrations((current) => [celebration, ...current].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)))
+        }
+      />
+    </main>
   );
 }
