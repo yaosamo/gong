@@ -64,3 +64,15 @@ export async function createLocalCelebration(
     locationLabel: buildLocationLabel(created),
   } satisfies Celebration;
 }
+
+export async function deleteLocalCelebration(id: string) {
+  const items = await readCelebrations();
+  const nextItems = items.filter((item) => item.id !== id);
+  const deleted = nextItems.length !== items.length;
+
+  if (deleted) {
+    await writeCelebrations(nextItems);
+  }
+
+  return deleted;
+}

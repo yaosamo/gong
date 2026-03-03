@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CelebrationBoard } from "@/components/celebration-board";
+import { useEffect, useState, useTransition } from "react";
 import { CelebrationLog } from "@/components/celebration-log";
 import { SceneControls } from "@/components/debug/scene-controls";
 import { GongScene } from "@/components/gong-scene";
@@ -13,14 +12,142 @@ import {
   type ConfettiSettings,
   type LightSettings,
 } from "@/lib/scene-config";
-import type { Celebration } from "@/lib/types";
+import type { Celebration, CelebrationInput } from "@/lib/types";
+import { formatCelebrationDate } from "@/lib/utils";
+
+type SampleRecord = {
+  id: string;
+  location: string;
+  date: string;
+  hits: string;
+  comment?: string;
+  author?: string;
+};
+
+const recordEmojis = ["🎉", "🍬", "🧃", "✨", "🍡", "🍭", "🌼", "🍓"];
+const recordLeads = [
+  "Cool bean",
+  "Sweet legend",
+  "Joy goblin",
+  "Happy camper",
+  "Party wizard",
+  "Bright soul",
+  "Good egg",
+  "Shiny human",
+  "Sparkle gremlin",
+  "Cheer machine",
+  "Delight unit",
+  "Tiny hero",
+  "Lucky noodle",
+  "Magic pal",
+  "Sunny rascal",
+  "Confetti captain",
+  "Fresh icon",
+  "Cosmic buddy",
+  "Golden menace",
+  "Peach champion",
+] as const;
+
+const sampleRecords: SampleRecord[] = [
+  {
+    id: "sample-1",
+    location: "Oregon",
+    date: "Mar 3, 2026 at 4:44 PM",
+    hits: "3 gong hits",
+  },
+  {
+    id: "sample-2",
+    location: "Portland",
+    date: "Mar 3, 2026 at 6:12 PM",
+    hits: "12 gong hits",
+    comment: "I just launched gong web app! gong.yaosamo.com",
+    author: "Yaroslav",
+  },
+  {
+    id: "sample-3",
+    location: "Bend",
+    date: "Mar 3, 2026 at 7:08 PM",
+    hits: "1 gong hit",
+    comment: "Wrapped a project that was dragging for weeks.",
+    author: "Avery",
+  },
+  {
+    id: "sample-4",
+    location: "Seattle",
+    date: "Mar 3, 2026 at 7:34 PM",
+    hits: "8 gong hits",
+  },
+  {
+    id: "sample-5",
+    location: "Eugene",
+    date: "Mar 3, 2026 at 8:01 PM",
+    hits: "2 gong hits",
+    comment: "Closed three loose threads and finally got a quiet evening.",
+    author: "Nina",
+  },
+  {
+    id: "sample-6",
+    location: "Tokyo",
+    date: "Mar 3, 2026 at 8:22 PM",
+    hits: "21 gong hits",
+  },
+  {
+    id: "sample-7",
+    location: "Los Angeles",
+    date: "Mar 3, 2026 at 8:48 PM",
+    hits: "5 gong hits",
+    comment: "Sent the deck, stopped overthinking, and called it done.",
+    author: "Maya",
+  },
+  {
+    id: "sample-8",
+    location: "Oregon",
+    date: "Mar 3, 2026 at 9:05 PM",
+    hits: "11 gong hits",
+  },
+  {
+    id: "sample-9",
+    location: "Vancouver",
+    date: "Mar 3, 2026 at 9:31 PM",
+    hits: "4 gong hits",
+    comment: "Got the feature stable on mobile and it finally feels solid.",
+    author: "Theo",
+  },
+  {
+    id: "sample-10",
+    location: "Kyoto",
+    date: "Mar 3, 2026 at 9:52 PM",
+    hits: "6 gong hits",
+  },
+];
+
+function hashString(value: string) {
+  return value.split("").reduce((accumulator, char) => accumulator * 31 + char.charCodeAt(0), 7);
+}
+
+function getRecordEmoji(key: string) {
+  return recordEmojis[Math.abs(hashString(key)) % recordEmojis.length] ?? "🎉";
+}
+
+function getRecordLead(key: string) {
+  return recordLeads[Math.abs(hashString(`${key}-lead`)) % recordLeads.length] ?? "Cool bean";
+}
 
 export default function HomePage() {
   const [celebrations, setCelebrations] = useState<Celebration[]>([]);
+  const [selectedCelebration, setSelectedCelebration] = useState<Celebration | null>(null);
+  const [sessionHitCounts, setSessionHitCounts] = useState<Record<string, number>>({});
+  const [sessionFallbackHits, setSessionFallbackHits] = useState(0);
+  const [isInlineFormOpen, setIsInlineFormOpen] = useState(false);
+  const [inlineName, setInlineName] = useState("");
+  const [inlineComment, setInlineComment] = useState("");
+  const [inlineError, setInlineError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isStriking, setIsStriking] = useState(false);
   const [hasRung, setHasRung] = useState(false);
   const [showControls, setShowControls] = useState(false);
+  const [showSampleRecords, setShowSampleRecords] = useState(false);
   const [cameraPosition, setCameraPosition] = useState(DEFAULT_CAMERA_POSITION);
   const [lightSettings, setLightSettings] = useState(INITIAL_LIGHT_SETTINGS);
   const [confettiSettings, setConfettiSettings] = useState(INITIAL_CONFETTI_SETTINGS);
@@ -28,6 +155,8 @@ export default function HomePage() {
   const [copyConfettiStatus, setCopyConfettiStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [headlineEntered, setHeadlineEntered] = useState(false);
   const [ambientConfettiEnabled, setAmbientConfettiEnabled] = useState(false);
+  const [isSubmittingInline, startInlineSubmit] = useTransition();
+  const [isDeleting, startDeleteTransition] = useTransition();
 
   useEffect(() => {
     const headlineTimeoutId = window.setTimeout(() => {
@@ -63,6 +192,40 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    try {
+      const stored = window.sessionStorage.getItem("gong-session-hit-counts");
+      const storedFallbackHits = window.sessionStorage.getItem("gong-session-fallback-hits");
+
+      if (stored) {
+        setSessionHitCounts(JSON.parse(stored) as Record<string, number>);
+      }
+
+      if (storedFallbackHits) {
+        setSessionFallbackHits(Number(storedFallbackHits) || 0);
+      }
+    } catch {
+      setSessionHitCounts({});
+      setSessionFallbackHits(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem("gong-session-hit-counts", JSON.stringify(sessionHitCounts));
+    } catch {
+      return;
+    }
+  }, [sessionHitCounts]);
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem("gong-session-fallback-hits", String(sessionFallbackHits));
+    } catch {
+      return;
+    }
+  }, [sessionFallbackHits]);
+
+  useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -84,9 +247,177 @@ export default function HomePage() {
   }, []);
 
   function strike() {
+    const nextCelebration =
+      selectedCelebration ??
+      (() => {
+        const pool = celebrations;
+        const index = Math.floor(Math.random() * pool.length);
+        return pool[index] ?? null;
+      })();
+
+    if (!nextCelebration) {
+      setSessionFallbackHits((current) => current + 1);
+      setHasRung(true);
+      setIsStriking(true);
+      window.setTimeout(() => setIsStriking(false), 850);
+      return;
+    }
+
+    setSelectedCelebration(nextCelebration);
+    setSessionHitCounts((current) => ({
+      ...current,
+      [nextCelebration.id]: (current[nextCelebration.id] ?? 0) + 1,
+    }));
     setHasRung(true);
     setIsStriking(true);
     window.setTimeout(() => setIsStriking(false), 850);
+  }
+
+  function getCelebrationLocationLabel(celebration: Celebration) {
+    return celebration.region || celebration.city || celebration.country || "Oregon";
+  }
+
+  function getHitCountLabel(celebration: Celebration) {
+    const count = sessionHitCounts[celebration.id] ?? 0;
+    const suffix = count === 1 ? "time" : "times";
+
+    return `${count} ${suffix}`;
+  }
+
+  function getActiveHitCount() {
+    if (selectedCelebration) {
+      return sessionHitCounts[selectedCelebration.id] ?? 0;
+    }
+
+    if (!hasRung) {
+      return 0;
+    }
+
+    return sessionFallbackHits > 0 ? sessionFallbackHits : 1;
+  }
+
+  function formatGongHits(count: number) {
+    return `${count} gong ${count === 1 ? "hit" : "hits"}`;
+  }
+
+  function formatCelebrationTitle(location: string, key: string) {
+    return `${getRecordLead(key)} in ${location} celebrating!`;
+  }
+
+  function getActiveCelebrationLine() {
+    if (selectedCelebration) {
+      return {
+        title: formatCelebrationTitle(
+          getCelebrationLocationLabel(selectedCelebration),
+          selectedCelebration.id,
+        ),
+        date: formatCelebrationDate(selectedCelebration.createdAt),
+      };
+    }
+
+    if (!hasRung) {
+      return null;
+    }
+
+    const fallbackCount = sessionFallbackHits > 0 ? sessionFallbackHits : 1;
+    const suffix = fallbackCount === 1 ? "time" : "times";
+
+    return {
+      title: formatCelebrationTitle("Oregon", `fallback-${fallbackCount}-${suffix}`),
+      date: formatCelebrationDate(new Date().toISOString()),
+    };
+  }
+
+  const activeCelebrationLine = getActiveCelebrationLine();
+  const activeRecordEmoji = getRecordEmoji(selectedCelebration?.id ?? `fallback-${sessionFallbackHits || 1}`);
+
+  function openInlineForm() {
+    setInlineError("");
+    setDeleteError("");
+    setInlineName(selectedCelebration?.name ?? "");
+    setInlineComment(selectedCelebration?.comment ?? "");
+    setIsInlineFormOpen(true);
+  }
+
+  function closeInlineForm() {
+    setInlineError("");
+    setDeleteError("");
+    setIsInlineFormOpen(false);
+    setInlineName("");
+    setInlineComment("");
+  }
+
+  function submitInlineComment() {
+    const payload: CelebrationInput = {
+      name: inlineName.trim(),
+      comment: inlineComment.trim(),
+    };
+
+    if (!payload.name || !payload.comment) {
+      setInlineError("Both fields are required.");
+      return;
+    }
+
+    startInlineSubmit(async () => {
+      const response = await fetch("/api/celebrations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        setInlineError("Could not save celebration.");
+        return;
+      }
+
+      const data = (await response.json()) as { celebration: Celebration };
+      setCelebrations((current) =>
+        [data.celebration, ...current].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)),
+      );
+      setSelectedCelebration(data.celebration);
+      setSessionHitCounts((current) => ({
+        ...current,
+        [data.celebration.id]: current[data.celebration.id] ?? 1,
+      }));
+      setHasRung(true);
+      closeInlineForm();
+    });
+  }
+
+  function deleteSelectedCelebration() {
+    if (!selectedCelebration) {
+      return;
+    }
+
+    setDeleteError("");
+
+    startDeleteTransition(async () => {
+      const response = await fetch(
+        `/api/celebrations?id=${encodeURIComponent(selectedCelebration.id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      if (!response.ok) {
+        setDeleteError("Could not delete celebration.");
+        return;
+      }
+
+      setCelebrations((current) => current.filter((item) => item.id !== selectedCelebration.id));
+      setSessionHitCounts((current) => {
+        const next = { ...current };
+        delete next[selectedCelebration.id];
+        return next;
+      });
+      setSelectedCelebration(null);
+      setIsInlineFormOpen(false);
+      setInlineError("");
+      setInlineName("");
+      setInlineComment("");
+    });
   }
 
   function updateLightSetting<K extends keyof LightSettings>(key: K, value: number) {
@@ -141,7 +472,6 @@ export default function HomePage() {
       }}
     >
       <LiveCursors />
-      <CelebrationBoard celebrations={celebrations} />
 
       <div
         aria-hidden="true"
@@ -171,9 +501,11 @@ export default function HomePage() {
           cameraPosition={cameraPosition}
           lightSettings={lightSettings}
           confettiSettings={confettiSettings}
+          showSampleRecords={showSampleRecords}
           copyStatus={copyStatus}
           copyConfettiStatus={copyConfettiStatus}
           onOpenLog={() => setIsLogOpen(true)}
+          onToggleSampleRecords={() => setShowSampleRecords((current) => !current)}
           onCopySceneSettings={copySceneSettings}
           onCopyConfettiSettings={copyConfettiSettings}
           onUpdateLightSetting={updateLightSetting}
@@ -200,96 +532,27 @@ export default function HomePage() {
         />
       </section>
 
-      {hasRung ? (
+      <div
+        style={{
+          position: "absolute",
+          top: "50%",
+          right: 48,
+          transform: "translateY(-60%)",
+          zIndex: 12,
+          width: "min(520px, 42vw)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 28,
+          maxHeight: "min(72vh, 860px)",
+          overflowY: "auto",
+          overflowX: "hidden",
+          pointerEvents: "none",
+        }}
+      >
         <div
           style={{
-            position: "absolute",
-            top: 96,
-            right: 32,
-            bottom: 96,
-            zIndex: 12,
-            width: "min(380px, 34vw)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 14,
-            overflow: "hidden",
-            pointerEvents: "none",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-              overflowY: "auto",
-              paddingRight: 4,
-            }}
-          >
-            {celebrations.length ? (
-              celebrations.slice(0, 8).map((celebration) => (
-                <article
-                  key={celebration.id}
-                  style={{
-                    padding: 14,
-                    borderRadius: 20,
-                    border: "1px solid rgba(16, 17, 18, 0.08)",
-                    background: "rgba(255, 255, 255, 0.74)",
-                    backdropFilter: "blur(14px)",
-                    boxShadow: "0 14px 34px rgba(17, 24, 39, 0.08)",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      fontSize: 13,
-                      color: "rgba(16, 17, 18, 0.5)",
-                    }}
-                  >
-                    <span>{celebration.name}</span>
-                    <span>{celebration.locationLabel}</span>
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 8,
-                      fontSize: 15,
-                      lineHeight: 1.45,
-                      color: "rgba(16, 17, 18, 0.88)",
-                    }}
-                  >
-                    {celebration.comment}
-                  </div>
-                </article>
-              ))
-            ) : (
-              <div
-                style={{
-                  padding: 16,
-                  borderRadius: 20,
-                  border: "1px dashed rgba(16, 17, 18, 0.16)",
-                  background: "rgba(255, 255, 255, 0.44)",
-                  color: "rgba(16, 17, 18, 0.5)",
-                  fontSize: 15,
-                  lineHeight: 1.45,
-                }}
-              >
-                No celebrations yet. Ring the gong to start the page.
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div
-          style={{
-            position: "absolute",
-            top: "50%",
-            right: 48,
-            transform: "translateY(-54%)",
-            zIndex: 12,
-            width: "min(520px, 42vw)",
-            pointerEvents: "none",
             textAlign: "left",
+            flexShrink: 0,
           }}
         >
           <div
@@ -310,37 +573,426 @@ export default function HomePage() {
             Gong to celebrate!
           </div>
         </div>
-      )}
 
-      <div
-        style={{
-          position: "absolute",
-          left: "50%",
-          bottom: 34,
-          transform: "translateX(-50%)",
-          zIndex: 12,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 10,
-          borderRadius: 999,
-          border: "1px solid rgba(16, 17, 18, 0.08)",
-          background: "rgba(255, 255, 255, 0.72)",
-          backdropFilter: "blur(16px)",
-          padding: "12px 16px",
-          boxShadow: "0 18px 40px rgba(17, 24, 39, 0.08)",
-          pointerEvents: "none",
-        }}
-      >
-        <div
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: 999,
-            background: "#c63a29",
-            boxShadow: "0 0 18px rgba(198, 58, 41, 0.42)",
-          }}
-        />
-        <div style={{ fontSize: 16, color: "rgba(16, 17, 18, 0.62)" }}>Tap the gong</div>
+        {hasRung ? (
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              paddingRight: 4,
+              paddingTop: 4,
+              pointerEvents: "auto",
+            }}
+          >
+            {activeCelebrationLine ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 12,
+                  maxWidth: "100%",
+                }}
+              >
+                <div
+                  aria-hidden="true"
+                  style={{
+                    fontSize: "clamp(16px, 1.8vw, 22px)",
+                    lineHeight: 1,
+                    transform: "translateY(0.22em)",
+                    flexShrink: 0,
+                  }}
+                >
+                  {activeRecordEmoji}
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    minWidth: 0,
+                  }}
+                >
+                  {selectedCelebration?.comment ? (
+                    <div
+                      style={{
+                        maxWidth: "100%",
+                        padding: "7px 14px",
+                        borderRadius: 999,
+                        border: "1px solid rgba(16, 17, 18, 0.08)",
+                        background: "rgba(255, 255, 255, 0.78)",
+                        boxShadow: "0 1px 0 rgba(16, 17, 18, 0.04)",
+                        fontSize: 16,
+                        lineHeight: 1.25,
+                        color: "rgba(17, 17, 17, 0.9)",
+                        textWrap: "pretty",
+                      }}
+                    >
+                      <span style={{ fontStyle: "italic" }}>{selectedCelebration.comment}</span>
+                      <span style={{ color: "rgba(17, 17, 17, 0.54)" }}> - </span>
+                      <span style={{ fontWeight: 600 }}>{selectedCelebration.name}</span>
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        fontSize: 16,
+                        lineHeight: 1.28,
+                        fontWeight: 400,
+                        color: "rgba(17, 17, 17, 0.88)",
+                        textWrap: "pretty",
+                      }}
+                    >
+                      {activeCelebrationLine.title}
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      fontSize: 14,
+                      color: "rgba(16, 17, 18, 0.5)",
+                    }}
+                  >
+                    {`${activeCelebrationLine.date} • ${formatGongHits(getActiveHitCount())}`}
+                  </div>
+                  <button
+                    onClick={openInlineForm}
+                    type="button"
+                    style={{
+                      padding: 0,
+                      border: "none",
+                      background: "transparent",
+                      fontSize: 15,
+                      color: "#c63a29",
+                      textDecoration: "underline",
+                      textUnderlineOffset: "0.18em",
+                      pointerEvents: "auto",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {selectedCelebration ? "edit" : "add comment"}
+                  </button>
+                  {selectedCelebration ? (
+                    <button
+                      onClick={deleteSelectedCelebration}
+                      disabled={isDeleting}
+                      type="button"
+                      style={{
+                        padding: 0,
+                        border: "none",
+                        background: "transparent",
+                        fontSize: 15,
+                        color: "rgba(154, 52, 18, 0.92)",
+                        textDecoration: "underline",
+                        textUnderlineOffset: "0.18em",
+                        pointerEvents: "auto",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {isDeleting ? "deleting..." : "delete"}
+                    </button>
+                  ) : null}
+                  {deleteError ? (
+                    <div style={{ fontSize: 13, color: "#9a3412" }}>{deleteError}</div>
+                  ) : null}
+                </div>
+                {isInlineFormOpen ? (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      marginLeft: 32,
+                      width: "min(360px, 100%)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                      pointerEvents: "auto",
+                    }}
+                  >
+                    <input
+                      value={inlineName}
+                      onChange={(event) => setInlineName(event.target.value)}
+                      maxLength={48}
+                      placeholder="Your name"
+                      style={{
+                        border: "1px solid rgba(16, 17, 18, 0.16)",
+                        borderRadius: 14,
+                        background: "rgba(255, 255, 255, 0.8)",
+                        padding: "12px 14px",
+                        fontSize: 14,
+                        color: "rgba(17, 17, 17, 0.92)",
+                      }}
+                    />
+                    <textarea
+                      value={inlineComment}
+                      onChange={(event) => setInlineComment(event.target.value)}
+                      maxLength={220}
+                      placeholder="What are you celebrating today?"
+                      rows={3}
+                      style={{
+                        border: "1px solid rgba(16, 17, 18, 0.16)",
+                        borderRadius: 14,
+                        background: "rgba(255, 255, 255, 0.8)",
+                        padding: "12px 14px",
+                        fontSize: 14,
+                        lineHeight: 1.4,
+                        color: "rgba(17, 17, 17, 0.92)",
+                        resize: "vertical",
+                      }}
+                    />
+                    {inlineError ? (
+                      <div style={{ fontSize: 13, color: "#9a3412" }}>{inlineError}</div>
+                    ) : null}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                      }}
+                    >
+                      <button
+                        onClick={submitInlineComment}
+                        disabled={isSubmittingInline}
+                        type="button"
+                        style={{
+                          padding: "10px 14px",
+                          border: "none",
+                          borderRadius: 999,
+                          background: "#111111",
+                          color: "#ffffff",
+                          fontSize: 14,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {isSubmittingInline ? "Submitting..." : "Submit"}
+                      </button>
+                      <button
+                        onClick={closeInlineForm}
+                        type="button"
+                        style={{
+                          padding: 0,
+                          border: "none",
+                          background: "transparent",
+                          fontSize: 14,
+                          color: "rgba(16, 17, 18, 0.56)",
+                          textDecoration: "underline",
+                          textUnderlineOffset: "0.18em",
+                          cursor: "pointer",
+                        }}
+                      >
+                        cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  gap: 14,
+                  color: "rgba(16, 17, 18, 0.5)",
+                  fontSize: 15,
+                  lineHeight: 1.45,
+                }}
+              >
+                No celebrations yet.
+                <button
+                  onClick={openInlineForm}
+                  type="button"
+                  style={{
+                    marginTop: 14,
+                    display: "inline-block",
+                    padding: 0,
+                    border: "none",
+                    background: "transparent",
+                    fontSize: 15,
+                    color: "#c63a29",
+                    textDecoration: "underline",
+                    textUnderlineOffset: "0.18em",
+                    pointerEvents: "auto",
+                    cursor: "pointer",
+                  }}
+                >
+                  add comment
+                </button>
+                {isInlineFormOpen ? (
+                  <div
+                    style={{
+                      width: "min(360px, 100%)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                      pointerEvents: "auto",
+                    }}
+                  >
+                    <input
+                      value={inlineName}
+                      onChange={(event) => setInlineName(event.target.value)}
+                      maxLength={48}
+                      placeholder="Your name"
+                      style={{
+                        border: "1px solid rgba(16, 17, 18, 0.16)",
+                        borderRadius: 14,
+                        background: "rgba(255, 255, 255, 0.8)",
+                        padding: "12px 14px",
+                        fontSize: 14,
+                        color: "rgba(17, 17, 17, 0.92)",
+                      }}
+                    />
+                    <textarea
+                      value={inlineComment}
+                      onChange={(event) => setInlineComment(event.target.value)}
+                      maxLength={220}
+                      placeholder="What are you celebrating today?"
+                      rows={3}
+                      style={{
+                        border: "1px solid rgba(16, 17, 18, 0.16)",
+                        borderRadius: 14,
+                        background: "rgba(255, 255, 255, 0.8)",
+                        padding: "12px 14px",
+                        fontSize: 14,
+                        lineHeight: 1.4,
+                        color: "rgba(17, 17, 17, 0.92)",
+                        resize: "vertical",
+                      }}
+                    />
+                    {inlineError ? (
+                      <div style={{ fontSize: 13, color: "#9a3412" }}>{inlineError}</div>
+                    ) : null}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                      }}
+                    >
+                      <button
+                        onClick={submitInlineComment}
+                        disabled={isSubmittingInline}
+                        type="button"
+                        style={{
+                          padding: "10px 14px",
+                          border: "none",
+                          borderRadius: 999,
+                          background: "#111111",
+                          color: "#ffffff",
+                          fontSize: 14,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {isSubmittingInline ? "Submitting..." : "Submit"}
+                      </button>
+                      <button
+                        onClick={closeInlineForm}
+                        type="button"
+                        style={{
+                          padding: 0,
+                          border: "none",
+                          background: "transparent",
+                          fontSize: 14,
+                          color: "rgba(16, 17, 18, 0.56)",
+                          textDecoration: "underline",
+                          textUnderlineOffset: "0.18em",
+                          cursor: "pointer",
+                        }}
+                      >
+                        cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
+            {showSampleRecords ? (
+              <div
+                style={{
+                  marginTop: 16,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 18,
+                  opacity: 0.78,
+                }}
+              >
+                {sampleRecords.map((record) => (
+                  <div
+                    key={record.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 12,
+                      maxWidth: "100%",
+                    }}
+                  >
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        fontSize: "clamp(16px, 1.8vw, 22px)",
+                        lineHeight: 1,
+                        transform: "translateY(0.22em)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {getRecordEmoji(record.id)}
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-start",
+                        gap: 8,
+                        minWidth: 0,
+                      }}
+                    >
+                      {record.comment ? (
+                        <div
+                          style={{
+                            maxWidth: "100%",
+                            padding: "7px 14px",
+                            borderRadius: 999,
+                            border: "1px solid rgba(16, 17, 18, 0.08)",
+                            background: "rgba(255, 255, 255, 0.78)",
+                            boxShadow: "0 1px 0 rgba(16, 17, 18, 0.04)",
+                            fontSize: 16,
+                            lineHeight: 1.25,
+                            color: "rgba(17, 17, 17, 0.9)",
+                            textWrap: "pretty",
+                          }}
+                        >
+                          <span style={{ fontStyle: "italic" }}>{record.comment}</span>
+                          <span style={{ color: "rgba(17, 17, 17, 0.54)" }}> - </span>
+                          <span style={{ fontWeight: 600 }}>{record.author}</span>
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            fontSize: 16,
+                            lineHeight: 1.28,
+                            fontWeight: 400,
+                            color: "rgba(17, 17, 17, 0.88)",
+                            textWrap: "pretty",
+                          }}
+                        >
+                          {formatCelebrationTitle(record.location, record.id)}
+                        </div>
+                      )}
+                      <div
+                        style={{
+                          fontSize: 14,
+                          color: "rgba(16, 17, 18, 0.5)",
+                        }}
+                      >
+                        {`${record.date} • ${record.hits}`}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <CelebrationLog

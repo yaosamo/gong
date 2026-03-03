@@ -88,3 +88,22 @@ export async function createSupabaseCelebration(
 
   return mapRow(data as Row);
 }
+
+export async function deleteSupabaseCelebration(id: string) {
+  const client = getClient();
+
+  if (!client) {
+    return null;
+  }
+
+  const { error, count } = await client
+    .from("celebrations")
+    .delete({ count: "exact" })
+    .eq("id", id);
+
+  if (error) {
+    throw error;
+  }
+
+  return (count ?? 0) > 0;
+}

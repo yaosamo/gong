@@ -49,9 +49,11 @@ export function SceneControls({
   cameraPosition,
   lightSettings,
   confettiSettings,
+  showSampleRecords,
   copyStatus,
   copyConfettiStatus,
   onOpenLog,
+  onToggleSampleRecords,
   onCopySceneSettings,
   onCopyConfettiSettings,
   onUpdateLightSetting,
@@ -60,9 +62,11 @@ export function SceneControls({
   cameraPosition: CameraPosition;
   lightSettings: LightSettings;
   confettiSettings: ConfettiSettings;
+  showSampleRecords: boolean;
   copyStatus: CopyStatus;
   copyConfettiStatus: CopyStatus;
   onOpenLog: () => void;
+  onToggleSampleRecords: () => void;
   onCopySceneSettings: () => void;
   onCopyConfettiSettings: () => void;
   onUpdateLightSetting: <K extends keyof LightSettings>(key: K, value: number) => void;
@@ -126,6 +130,29 @@ export function SceneControls({
         >
           Light Controls (Test)
         </div>
+        <button
+          type="button"
+          onClick={onToggleSampleRecords}
+          style={{
+            display: "flex",
+            width: "100%",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 14,
+            borderRadius: 16,
+            border: "1px solid rgba(16, 17, 18, 0.12)",
+            background: "rgba(255, 255, 255, 0.9)",
+            padding: "12px 14px",
+            fontSize: 13,
+            color: "rgba(16, 17, 18, 0.82)",
+            boxShadow: "0 10px 24px rgba(17, 24, 39, 0.06)",
+          }}
+        >
+          <span>Show Sample Records</span>
+          <span style={{ color: showSampleRecords ? "#c63a29" : "rgba(16, 17, 18, 0.45)" }}>
+            {showSampleRecords ? "On" : "Off"}
+          </span>
+        </button>
         <div
           style={{
             display: "flex",

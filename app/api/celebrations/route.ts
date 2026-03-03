@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
-import { createLocalCelebration, listLocalCelebrations } from "@/lib/store";
+import {
+  createLocalCelebration,
+  deleteLocalCelebration,
+  listLocalCelebrations,
+} from "@/lib/store";
 import { resolveLocationFromRequest } from "@/lib/geolocation";
 import {
   createSupabaseCelebration,
+  deleteSupabaseCelebration,
   listSupabaseCelebrations,
 } from "@/lib/server-supabase";
 
@@ -49,4 +54,21 @@ export async function POST(request: Request) {
     ));
 
   return NextResponse.json({ celebration }, { status: 201 });
+}
+
+export async function DELETE(request: Request) {
+  const id = new URL(request.url).searchParams.get("id")?.trim() ?? "";
+
+  if (!id) {
+    return NextResponse.json({ error: "Celebration id is required." }, { status: 400 });
+  }
+
+  const deleted =
+    (await deleteSupabaseCelebration(id).catch(() => null)) ?? (await deleteLocalCelebration(id));
+
+  if (!deleted) {
+    return NextResponse.json({ error: "Celebration not found." }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true });
 }
