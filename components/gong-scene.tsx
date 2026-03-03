@@ -1,18 +1,31 @@
 "use client";
 
+import Image from "next/image";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Environment, Float, OrbitControls } from "@react-three/drei";
-import { useEffect, useRef } from "react";
+import { Environment, Float, OrbitControls, useTexture } from "@react-three/drei";
+import { useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
+import ReactCanvasConfetti from "react-canvas-confetti";
+import type { TCanvasConfettiInstance } from "react-canvas-confetti/dist/types";
+import { DEFAULT_CAMERA_POSITION, type ConfettiSettings, type LightSettings } from "@/lib/scene-config";
+import { SRGBColorSpace } from "three";
 import type { Group, Mesh } from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 
 function GongModel({
   isStriking,
 }: {
   isStriking: boolean;
 }) {
-  const gongRef = useRef<Mesh>(null);
+  const gongRef = useRef<Group>(null);
   const suspendedRef = useRef<Group>(null);
   const phaseRef = useRef(0);
+  const gongTexture = useTexture("/gong-texture-2.png");
+
+  useEffect(() => {
+    gongTexture.colorSpace = SRGBColorSpace;
+    gongTexture.flipY = false;
+  }, [gongTexture]);
 
   useEffect(() => {
     if (isStriking) {
@@ -33,14 +46,19 @@ function GongModel({
     const strike = phaseRef.current;
 
     if (strike > 0.001) {
-      phaseRef.current = Math.max(0, strike - delta * 1.2);
+      phaseRef.current = Math.max(0, strike - delta * 0.72);
     }
 
-    const swing = Math.sin((1 - phaseRef.current) * 12) * strike * 0.24;
+    const swingPhase = 1 - phaseRef.current;
+    const primarySwing = Math.sin(swingPhase * 11) * strike * 0.34;
+    const secondarySwing = Math.sin(swingPhase * 22) * strike * 0.06;
+    const swing = primarySwing + secondarySwing;
     suspended.rotation.z = idle + swing;
-    suspended.position.y = Math.cos(suspended.rotation.z) * -0.02;
+    suspended.position.y = Math.cos(suspended.rotation.z) * -0.035 - strike * 0.018;
 
-    gong.position.z = Math.sin((1 - phaseRef.current) * 20) * strike * 0.08;
+    gong.position.z = Math.sin(swingPhase * 24) * strike * 0.13;
+    gong.rotation.y = Math.sin(swingPhase * 18) * strike * 0.055;
+    gong.rotation.x = Math.sin(swingPhase * 28) * strike * 0.028;
   });
 
   return (
@@ -65,12 +83,12 @@ function GongModel({
         <meshStandardMaterial color="#d64531" roughness={0.56} />
       </mesh>
 
-      <mesh position={[-2.14, -1.86, -0.2]} castShadow receiveShadow>
+      <mesh position={[-2.14, -2.04, -0.2]} castShadow receiveShadow>
         <boxGeometry args={[0.54, 0.16, 0.46]} />
         <meshStandardMaterial color="#111111" roughness={0.42} metalness={0.08} />
       </mesh>
 
-      <mesh position={[2.14, -1.86, -0.2]} castShadow receiveShadow>
+      <mesh position={[2.14, -2.04, -0.2]} castShadow receiveShadow>
         <boxGeometry args={[0.54, 0.16, 0.46]} />
         <meshStandardMaterial color="#111111" roughness={0.42} metalness={0.08} />
       </mesh>
@@ -87,35 +105,33 @@ function GongModel({
 
       <Float speed={1.2} rotationIntensity={0.03} floatIntensity={0.06}>
         <group ref={suspendedRef} position={[0, 1.36, 0]}>
-          <mesh ref={gongRef} position={[0, -0.18, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
-            <cylinderGeometry args={[1.52, 1.52, 0.3, 96]} />
-            <meshPhysicalMaterial
-              color="#c4922c"
-              metalness={0.82}
-              roughness={0.24}
-              clearcoat={0.9}
-              clearcoatRoughness={0.12}
-              emissive="#71501b"
-              emissiveIntensity={0.1}
-            />
-          </mesh>
+          <group ref={gongRef} position={[0, -0.18, 0]}>
+            <mesh rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
+              <cylinderGeometry args={[1.52, 1.52, 0.22, 96]} />
+              <meshStandardMaterial color="#050505" metalness={0.12} roughness={0.88} />
+            </mesh>
 
-          <mesh position={[0, -0.18, 0.2]} castShadow>
-            <circleGeometry args={[0.24, 64]} />
-            <meshPhysicalMaterial
-              color="#e5c56d"
-              metalness={0.92}
-              roughness={0.16}
-              clearcoat={0.88}
-              emissive="#7a5a1a"
-              emissiveIntensity={0.08}
-            />
-          </mesh>
+            <mesh position={[0, 0, 0.113]} castShadow receiveShadow>
+              <circleGeometry args={[1.48, 96]} />
+              <meshPhysicalMaterial
+                map={gongTexture}
+                color="#d0a243"
+                metalness={0.78}
+                roughness={0.26}
+                clearcoat={0.9}
+                clearcoatRoughness={0.14}
+                emissive="#5b3e10"
+                emissiveIntensity={0.05}
+                polygonOffset
+                polygonOffsetFactor={-2}
+              />
+            </mesh>
 
-          <mesh position={[0, -0.18, -0.17]} receiveShadow>
-            <torusGeometry args={[1.36, 0.05, 20, 96]} />
-            <meshStandardMaterial color="#875f1c" metalness={0.72} roughness={0.34} />
-          </mesh>
+            <mesh position={[0, 0, -0.17]} receiveShadow>
+              <torusGeometry args={[1.36, 0.05, 20, 96]} />
+              <meshStandardMaterial color="#875f1c" metalness={0.72} roughness={0.34} />
+            </mesh>
+          </group>
         </group>
       </Float>
     </group>
@@ -147,19 +163,276 @@ function CameraReporter({
   return null;
 }
 
+function CameraShake({
+  isStriking,
+}: {
+  isStriking: boolean;
+}) {
+  const { camera } = useThree();
+  const phaseRef = useRef(0);
+  const lastOffsetRef = useRef({ x: 0, y: 0, z: 0 });
+
+  useEffect(() => {
+    if (isStriking) {
+      phaseRef.current = 1;
+    }
+  }, [isStriking]);
+
+  useFrame((state, delta) => {
+    const lastOffset = lastOffsetRef.current;
+
+    camera.position.x -= lastOffset.x;
+    camera.position.y -= lastOffset.y;
+    camera.position.z -= lastOffset.z;
+
+    const shake = phaseRef.current;
+
+    if (shake > 0.001) {
+      phaseRef.current = Math.max(0, shake - delta * 2.4);
+    }
+
+    const t = state.clock.elapsedTime;
+    const amplitude = shake * 0.11;
+    const nextOffset = {
+      x: Math.sin(t * 38) * amplitude,
+      y: Math.cos(t * 45) * amplitude * 0.75,
+      z: Math.sin(t * 30) * amplitude * 0.45,
+    };
+
+    camera.position.x += nextOffset.x;
+    camera.position.y += nextOffset.y;
+    camera.position.z += nextOffset.z;
+    lastOffsetRef.current = nextOffset;
+  });
+
+  return null;
+}
+
+function CameraIntro({
+  controlsRef,
+}: {
+  controlsRef: React.RefObject<OrbitControlsImpl | null>;
+}) {
+  const { camera } = useThree();
+  const progressRef = useRef(0);
+
+  useEffect(() => {
+    camera.position.set(-13.4, 3.6, 18.5);
+  }, [camera]);
+
+  useFrame((_, delta) => {
+    const controls = controlsRef.current;
+
+    if (!controls || progressRef.current >= 1) {
+      return;
+    }
+
+    progressRef.current = Math.min(1, progressRef.current + delta * 0.42);
+    const eased = 1 - Math.pow(1 - progressRef.current, 4);
+
+    camera.position.set(
+      -13.4 + (DEFAULT_CAMERA_POSITION.x + 13.4) * eased,
+      3.6 + (DEFAULT_CAMERA_POSITION.y - 3.6) * eased,
+      18.5 + (DEFAULT_CAMERA_POSITION.z - 18.5) * eased,
+    );
+
+    controls.target.set(
+      0 + (0 * eased),
+      1.35 + (0.35 - 1.35) * eased,
+      0.6 + (0 - 0.6) * eased,
+    );
+    controls.update();
+  });
+
+  return null;
+}
+
 export function GongScene({
   isStriking,
   onStrike,
   onCameraChange,
+  ambientConfettiEnabled,
+  lightSettings,
+  confettiSettings,
 }: {
   isStriking: boolean;
   onStrike: () => void;
   onCameraChange: (position: { x: number; y: number; z: number }) => void;
+  ambientConfettiEnabled: boolean;
+  lightSettings: LightSettings;
+  confettiSettings: ConfettiSettings;
 }) {
+  const [cursorState, setCursorState] = useState({
+    visible: false,
+    x: 0,
+    y: 0,
+    striking: false,
+  });
+  const [strikeMarker, setStrikeMarker] = useState({
+    visible: false,
+    x: 0,
+    y: 0,
+    scale: 0,
+  });
+  const confettiRef = useRef<TCanvasConfettiInstance | null>(null);
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
+  const [confettiReady, setConfettiReady] = useState(false);
+
+  function fireConfetti() {
+    const confetti = confettiRef.current;
+
+    if (!confetti) {
+      return;
+    }
+
+    const colors = ["#f7d871", "#e4bb44", "#c9971b", "#fff0a8"];
+    confetti({
+      particleCount: confettiSettings.burstParticleCount,
+      spread: confettiSettings.burstSpread,
+      startVelocity: confettiSettings.burstStartVelocity,
+      decay: confettiSettings.burstDecay,
+      scalar: confettiSettings.burstScalar,
+      gravity: confettiSettings.burstGravity,
+      ticks: confettiSettings.burstTicks,
+      origin: { x: 0.5, y: 0.32 },
+      colors,
+      zIndex: 2,
+    });
+    confetti({
+      particleCount: Math.round(confettiSettings.burstParticleCount * 0.5),
+      angle: 120,
+      spread: Math.max(20, confettiSettings.burstSpread * 0.7),
+      startVelocity: Math.max(4, confettiSettings.burstStartVelocity * 0.85),
+      decay: confettiSettings.burstDecay,
+      scalar: Math.max(0.2, confettiSettings.burstScalar * 0.93),
+      gravity: confettiSettings.burstGravity * 1.05,
+      ticks: Math.max(80, confettiSettings.burstTicks * 0.92),
+      origin: { x: 0.16, y: 0.3 },
+      colors,
+      zIndex: 2,
+    });
+    confetti({
+      particleCount: Math.round(confettiSettings.burstParticleCount * 0.5),
+      angle: 60,
+      spread: Math.max(20, confettiSettings.burstSpread * 0.7),
+      startVelocity: Math.max(4, confettiSettings.burstStartVelocity * 0.85),
+      decay: confettiSettings.burstDecay,
+      scalar: Math.max(0.2, confettiSettings.burstScalar * 0.93),
+      gravity: confettiSettings.burstGravity * 1.05,
+      ticks: Math.max(80, confettiSettings.burstTicks * 0.92),
+      origin: { x: 0.84, y: 0.3 },
+      colors,
+      zIndex: 2,
+    });
+  }
+
+  useEffect(() => {
+    if (!confettiReady || !ambientConfettiEnabled) {
+      return;
+    }
+
+    function emitAmbientConfetti(originY?: number) {
+      const confetti = confettiRef.current;
+
+      if (!confetti) {
+        return;
+      }
+
+      confetti({
+        particleCount: Math.round(confettiSettings.alwaysParticleCount),
+        angle: 90,
+        spread: confettiSettings.alwaysSpread,
+        startVelocity: confettiSettings.alwaysStartVelocity,
+        decay: confettiSettings.alwaysDecay,
+        gravity: confettiSettings.alwaysGravity,
+        drift: -0.08 + Math.random() * 0.16,
+        scalar: confettiSettings.alwaysScalar * (0.9 + Math.random() * 0.2),
+        ticks: confettiSettings.alwaysTicks,
+        origin: { x: 0.08 + Math.random() * 0.84, y: originY ?? -0.04 },
+        colors: ["#f7d871", "#e4bb44", "#c9971b", "#fff0a8"],
+        zIndex: 2,
+      });
+    }
+
+    for (let index = 0; index < 14; index += 1) {
+      emitAmbientConfetti(0.04 + Math.random() * 0.82);
+    }
+
+    const intervalId = window.setInterval(() => {
+      emitAmbientConfetti();
+    }, confettiSettings.alwaysIntervalMs);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [ambientConfettiEnabled, confettiReady, confettiSettings]);
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    setCursorState((current) => ({
+      ...current,
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+    }));
+  }
+
+  function handlePointerEnter(event: ReactPointerEvent<HTMLDivElement>) {
+    setCursorState((current) => ({
+      ...current,
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+    }));
+  }
+
+  function handlePointerLeave() {
+    setCursorState((current) => ({
+      ...current,
+      visible: false,
+      striking: false,
+    }));
+  }
+
+  function handleStrike() {
+    onStrike();
+    setCursorState((current) => ({
+      ...current,
+      striking: true,
+    }));
+    setStrikeMarker({
+      visible: true,
+      x: cursorState.x,
+      y: cursorState.y,
+      scale: 0,
+    });
+    fireConfetti();
+    window.setTimeout(() => {
+      setStrikeMarker((current) => ({
+        ...current,
+        scale: 1,
+      }));
+    }, 0);
+    window.setTimeout(() => {
+      setCursorState((current) => ({
+        ...current,
+        striking: false,
+      }));
+    }, 220);
+    window.setTimeout(() => {
+      setStrikeMarker((current) => ({
+        ...current,
+        visible: false,
+      }));
+    }, 100);
+  }
+
   return (
     <div
       aria-label="Strike the gong scene"
-      onClick={onStrike}
+      onClick={handleStrike}
+      onPointerMove={handlePointerMove}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
       style={{
         background: "transparent",
         padding: 0,
@@ -167,43 +440,114 @@ export function GongScene({
         height: "100%",
         position: "absolute",
         inset: 0,
+        cursor: "none",
       }}
     >
+      <ReactCanvasConfetti
+        onInit={({ confetti }) => {
+          confettiRef.current = confetti;
+          setConfettiReady(true);
+        }}
+        style={{
+          position: "fixed",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          pointerEvents: "none",
+          zIndex: 6,
+        }}
+      />
+      {strikeMarker.visible ? (
+        <Image
+          aria-hidden="true"
+          alt=""
+          src="/strike.png"
+          width={144}
+          height={144}
+          unoptimized
+          style={{
+            position: "fixed",
+            left: strikeMarker.x - 60,
+            top: strikeMarker.y,
+            transform: `translate(-50%, -50%) scale(${strikeMarker.scale})`,
+            zIndex: 998,
+            pointerEvents: "none",
+            filter: "drop-shadow(0 0 18px rgba(211, 31, 31, 0.26))",
+            objectFit: "contain",
+            transition: "transform 100ms cubic-bezier(0.2, 0.9, 0.2, 1)",
+          }}
+        />
+      ) : null}
+      {cursorState.visible ? (
+        <Image
+          aria-hidden="true"
+          alt=""
+          src="/cursor.png"
+          width={140}
+          height={140}
+          unoptimized
+          style={{
+            position: "fixed",
+            left: cursorState.x,
+            top: cursorState.y,
+            pointerEvents: "none",
+            userSelect: "none",
+            transform: cursorState.striking
+              ? "translate(-58%, -38%) rotate(-34deg) scale(0.88)"
+              : "translate(-50%, -50%) rotate(-10deg) scale(1)",
+            transformOrigin: "50% 50%",
+            transition: "transform 200ms cubic-bezier(0.22, 0.84, 0.24, 1)",
+            zIndex: 999,
+            filter: "drop-shadow(0 12px 18px rgba(17, 24, 39, 0.18))",
+            objectFit: "contain",
+          }}
+        />
+      ) : null}
       <Canvas
-        camera={{ position: [-6.17, -0.26, 6.24], fov: 33 }}
+        camera={{
+          position: [DEFAULT_CAMERA_POSITION.x, DEFAULT_CAMERA_POSITION.y, DEFAULT_CAMERA_POSITION.z],
+          fov: 33,
+        }}
         dpr={[1, 1.8]}
         shadows
         style={{ width: "100%", height: "100%" }}
       >
         <color attach="background" args={["#f7f5ef"]} />
         <fog attach="fog" args={["#f4f0e6", 12, 20]} />
-        <ambientLight intensity={0.8} color="#fff8ee" />
+        <ambientLight intensity={lightSettings.ambientIntensity} color="#fff8ee" />
         <hemisphereLight
           color="#fff8e7"
           groundColor="#ded3bf"
-          intensity={0.9}
+          intensity={lightSettings.hemisphereIntensity}
         />
         <directionalLight
           castShadow
-          intensity={1.6}
+          intensity={lightSettings.directionalIntensity}
           color="#fff0d1"
-          position={[4, 6, 5]}
+          position={[lightSettings.directionalX, lightSettings.directionalY, lightSettings.directionalZ]}
           shadow-mapSize-width={2048}
           shadow-mapSize-height={2048}
         />
         <spotLight
           castShadow
-          intensity={1.35}
+          intensity={lightSettings.spotIntensity}
           color="#fff4de"
-          position={[0, 5.5, 4]}
-          angle={0.36}
-          penumbra={0.95}
+          position={[lightSettings.spotX, lightSettings.spotY, lightSettings.spotZ]}
+          angle={lightSettings.spotAngle}
+          penumbra={lightSettings.spotPenumbra}
         />
-        <pointLight intensity={0.45} color="#dcb15d" position={[0, 1.6, 3]} />
+        <pointLight
+          intensity={lightSettings.pointIntensity}
+          color="#dcb15d"
+          position={[lightSettings.pointX, lightSettings.pointY, lightSettings.pointZ]}
+        />
         <Environment preset="city" />
+        <CameraIntro controlsRef={controlsRef} />
         <CameraReporter onCameraChange={onCameraChange} />
+        <CameraShake isStriking={isStriking} />
         <GongModel isStriking={isStriking} />
         <OrbitControls
+          ref={controlsRef}
           enablePan={false}
           enableDamping
           dampingFactor={0.08}

@@ -3,19 +3,45 @@
 import { useEffect, useState } from "react";
 import { CelebrationBoard } from "@/components/celebration-board";
 import { CelebrationLog } from "@/components/celebration-log";
-import { CelebrationModal } from "@/components/celebration-modal";
+import { SceneControls } from "@/components/debug/scene-controls";
 import { GongScene } from "@/components/gong-scene";
 import { LiveCursors } from "@/components/live-cursors";
+import {
+  DEFAULT_CAMERA_POSITION,
+  INITIAL_CONFETTI_SETTINGS,
+  INITIAL_LIGHT_SETTINGS,
+  type ConfettiSettings,
+  type LightSettings,
+} from "@/lib/scene-config";
 import type { Celebration } from "@/lib/types";
 
 export default function HomePage() {
   const [celebrations, setCelebrations] = useState<Celebration[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isStriking, setIsStriking] = useState(false);
   const [hasRung, setHasRung] = useState(false);
   const [showControls, setShowControls] = useState(false);
-  const [cameraPosition, setCameraPosition] = useState({ x: -6.17, y: -0.26, z: 6.24 });
+  const [cameraPosition, setCameraPosition] = useState(DEFAULT_CAMERA_POSITION);
+  const [lightSettings, setLightSettings] = useState(INITIAL_LIGHT_SETTINGS);
+  const [confettiSettings, setConfettiSettings] = useState(INITIAL_CONFETTI_SETTINGS);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [copyConfettiStatus, setCopyConfettiStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [headlineEntered, setHeadlineEntered] = useState(false);
+  const [ambientConfettiEnabled, setAmbientConfettiEnabled] = useState(false);
+
+  useEffect(() => {
+    const headlineTimeoutId = window.setTimeout(() => {
+      setHeadlineEntered(true);
+    }, 1000);
+    const confettiTimeoutId = window.setTimeout(() => {
+      setAmbientConfettiEnabled(true);
+    }, 1000);
+
+    return () => {
+      window.clearTimeout(headlineTimeoutId);
+      window.clearTimeout(confettiTimeoutId);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +89,48 @@ export default function HomePage() {
     window.setTimeout(() => setIsStriking(false), 850);
   }
 
+  function updateLightSetting<K extends keyof LightSettings>(key: K, value: number) {
+    setLightSettings((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateConfettiSetting<K extends keyof ConfettiSettings>(key: K, value: number) {
+    setConfettiSettings((current) => ({ ...current, [key]: value }));
+  }
+
+  async function copySceneSettings() {
+    const payload = JSON.stringify(
+      {
+        camera: cameraPosition,
+        lights: lightSettings,
+        confetti: confettiSettings,
+      },
+      null,
+      2,
+    );
+
+    try {
+      await navigator.clipboard.writeText(payload);
+      setCopyStatus("copied");
+      window.setTimeout(() => setCopyStatus("idle"), 1800);
+    } catch {
+      setCopyStatus("failed");
+      window.setTimeout(() => setCopyStatus("idle"), 1800);
+    }
+  }
+
+  async function copyConfettiSettings() {
+    const payload = JSON.stringify(confettiSettings, null, 2);
+
+    try {
+      await navigator.clipboard.writeText(payload);
+      setCopyConfettiStatus("copied");
+      window.setTimeout(() => setCopyConfettiStatus("idle"), 1800);
+    } catch {
+      setCopyConfettiStatus("failed");
+      window.setTimeout(() => setCopyConfettiStatus("idle"), 1800);
+    }
+  }
+
   return (
     <main
       style={{
@@ -99,33 +167,18 @@ export default function HomePage() {
       />
 
       {showControls ? (
-        <header
-          style={{
-            position: "absolute",
-            inset: "24px 24px auto 24px",
-            zIndex: 12,
-            display: "flex",
-            justifyContent: "flex-end",
-            alignItems: "center",
-            gap: 24,
-          }}
-        >
-          <button
-            onClick={() => setIsLogOpen(true)}
-            type="button"
-            style={{
-              position: "relative",
-              zIndex: 12,
-              borderRadius: 999,
-              border: "1px solid rgba(16, 17, 18, 0.12)",
-              background: "rgba(255, 255, 255, 0.76)",
-              padding: "14px 18px",
-              boxShadow: "0 18px 30px rgba(17, 24, 39, 0.06)",
-            }}
-          >
-            Celebration Log
-          </button>
-        </header>
+        <SceneControls
+          cameraPosition={cameraPosition}
+          lightSettings={lightSettings}
+          confettiSettings={confettiSettings}
+          copyStatus={copyStatus}
+          copyConfettiStatus={copyConfettiStatus}
+          onOpenLog={() => setIsLogOpen(true)}
+          onCopySceneSettings={copySceneSettings}
+          onCopyConfettiSettings={copyConfettiSettings}
+          onUpdateLightSetting={updateLightSetting}
+          onUpdateConfettiSetting={updateConfettiSetting}
+        />
       ) : null}
 
       <section
@@ -141,6 +194,9 @@ export default function HomePage() {
           isStriking={isStriking}
           onStrike={strike}
           onCameraChange={setCameraPosition}
+          ambientConfettiEnabled={ambientConfettiEnabled}
+          lightSettings={lightSettings}
+          confettiSettings={confettiSettings}
         />
       </section>
 
@@ -238,6 +294,11 @@ export default function HomePage() {
         >
           <div
             style={{
+              transform: headlineEntered ? "translateX(0)" : "translateX(300px)",
+              opacity: headlineEntered ? 1 : 0,
+              transition:
+                "transform 1000ms cubic-bezier(0.16, 1, 0.3, 1), opacity 1000ms ease-out",
+              willChange: "transform, opacity",
               fontSize: "clamp(44px, 7vw, 108px)",
               lineHeight: 0.9,
               letterSpacing: "-0.06em",
@@ -282,48 +343,10 @@ export default function HomePage() {
         <div style={{ fontSize: 16, color: "rgba(16, 17, 18, 0.62)" }}>Tap the gong</div>
       </div>
 
-      {showControls ? (
-        <div
-          style={{
-            position: "absolute",
-            left: 24,
-            right: 24,
-            bottom: 24,
-            zIndex: 12,
-            display: "flex",
-            justifyContent: "flex-start",
-            pointerEvents: "none",
-          }}
-        >
-          <div
-            style={{
-              borderRadius: 16,
-              border: "1px solid rgba(16, 17, 18, 0.08)",
-              background: "rgba(255, 255, 255, 0.72)",
-              backdropFilter: "blur(16px)",
-              padding: "10px 14px",
-              boxShadow: "0 18px 40px rgba(17, 24, 39, 0.08)",
-              fontSize: 13,
-              color: "rgba(16, 17, 18, 0.62)",
-            }}
-          >
-            {`camera: x ${cameraPosition.x}, y ${cameraPosition.y}, z ${cameraPosition.z}`}
-          </div>
-        </div>
-      ) : null}
-
       <CelebrationLog
         celebrations={celebrations}
         isOpen={isLogOpen}
         onClose={() => setIsLogOpen(false)}
-      />
-
-      <CelebrationModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSubmitted={(celebration) =>
-          setCelebrations((current) => [celebration, ...current].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)))
-        }
       />
     </main>
   );
