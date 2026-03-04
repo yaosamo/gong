@@ -14,12 +14,13 @@ import {
   type ConfettiSettings,
   type LightSettings,
 } from "@/lib/scene-config";
+import { getSupabaseBrowserClient } from "@/lib/supabase";
 import type {
   Celebration,
   CelebrationInput,
   CelebrationPositionInput,
 } from "@/lib/types";
-import { formatCelebrationDate } from "@/lib/utils";
+import { buildLocationLabel, formatCelebrationDate } from "@/lib/utils";
 
 type SampleRecord = {
   id: string;
@@ -27,6 +28,20 @@ type SampleRecord = {
   reactions: number;
   comment?: string;
   author?: string;
+};
+
+type CelebrationRow = {
+  id: string | number;
+  name: string;
+  comment: string;
+  created_at: string;
+  reactions: number | null;
+  note_x: number | null;
+  note_y: number | null;
+  note_rotate: number | null;
+  city: string | null;
+  region: string | null;
+  country: string | null;
 };
 
 type FloatingRecord = {
@@ -222,6 +237,39 @@ function getRecordTheme(key: string) {
 
 const fallbackRecordId = "fallback-active";
 
+function mapCelebrationRow(row: CelebrationRow): Celebration {
+  return {
+    id: String(row.id),
+    name: row.name,
+    comment: row.comment,
+    createdAt: row.created_at,
+    reactions: row.reactions ?? 0,
+    noteX: row.note_x,
+    noteY: row.note_y,
+    noteRotate: row.note_rotate,
+    city: row.city,
+    region: row.region,
+    country: row.country,
+    locationLabel: buildLocationLabel({
+      city: row.city,
+      region: row.region,
+      country: row.country,
+    }),
+  };
+}
+
+function upsertCelebrationRecord(items: Celebration[], nextItem: Celebration) {
+  const existingIndex = items.findIndex((item) => item.id === nextItem.id);
+
+  if (existingIndex === -1) {
+    return [nextItem, ...items].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+  }
+
+  const nextItems = [...items];
+  nextItems[existingIndex] = nextItem;
+  return nextItems.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+}
+
 function layoutFloatingRecords(records: FloatingRecord[]) {
   const anchors = [
     { x: 10, y: 15 },
@@ -326,7 +374,7 @@ export default function HomePage() {
   const [reactedRecordIds, setReactedRecordIds] = useState<string[]>([]);
   const [hoveredReactionId, setHoveredReactionId] = useState<string | null>(null);
   const [draggingRecordId, setDraggingRecordId] = useState<string | null>(null);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [isSubmittingInline, startInlineSubmit] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
   const [dragPositions, setDragPositions] = useState<Record<string, DragPosition>>({});
@@ -375,6 +423,87 @@ export default function HomePage() {
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const client = getSupabaseBrowserClient();
+
+    if (!client) {
+      return;
+    }
+
+    const channel = client
+      .channel("celebrations-db-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "celebrations",
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const deletedId = String((payload.old as { id?: string | number } | null)?.id ?? "");
+
+            if (!deletedId) {
+              return;
+            }
+
+            setCelebrations((current) => current.filter((item) => item.id !== deletedId));
+            setSelectedCelebration((current) => (current?.id === deletedId ? null : current));
+            setSessionHitCounts((current) => {
+              if (!(deletedId in current)) {
+                return current;
+              }
+
+              const next = { ...current };
+              delete next[deletedId];
+              return next;
+            });
+            setDragPositions((current) => {
+              if (!(deletedId in current)) {
+                return current;
+              }
+
+              const next = { ...current };
+              delete next[deletedId];
+              return next;
+            });
+            setSettledPositions((current) => {
+              if (!(deletedId in current)) {
+                return current;
+              }
+
+              const next = { ...current };
+              delete next[deletedId];
+              return next;
+            });
+            return;
+          }
+
+          const row = payload.new as CelebrationRow | null;
+
+          if (!row) {
+            return;
+          }
+
+          const celebration = mapCelebrationRow(row);
+
+          setCelebrations((current) => upsertCelebrationRecord(current, celebration));
+          setSelectedCelebration((current) =>
+            current?.id === celebration.id ? celebration : current,
+          );
+        },
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          console.error("[celebrations-sync] channel status:", status);
+        }
+      });
+
+    return () => {
+      void client.removeChannel(channel);
     };
   }, []);
 
@@ -752,6 +881,33 @@ export default function HomePage() {
       const next = { ...current };
 
       for (const record of floatingRecords) {
+        const remotePosition =
+          record.isPersisted &&
+          typeof record.noteX === "number" &&
+          typeof record.noteY === "number"
+            ? {
+                x: record.noteX,
+                y: record.noteY,
+                rotate: record.noteRotate ?? record.rotate,
+              }
+            : null;
+
+        if (remotePosition) {
+          const existing = next[record.id];
+
+          if (
+            !existing ||
+            existing.x !== remotePosition.x ||
+            existing.y !== remotePosition.y ||
+            existing.rotate !== remotePosition.rotate
+          ) {
+            next[record.id] = remotePosition;
+            changed = true;
+          }
+
+          continue;
+        }
+
         if (!next[record.id]) {
           next[record.id] = {
             x: record.x,
