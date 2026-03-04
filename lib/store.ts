@@ -178,13 +178,10 @@ export async function updateLocalCelebration(id: string, input: CelebrationInput
 export async function updateLocalCelebrationPosition(
   id: string,
   position: CelebrationPositionInput,
-  authorSessionId: string,
 ) {
   const items = await readCelebrations();
   const reactions = await readReactions();
-  const index = items.findIndex(
-    (item) => item.id === id && item.authorSessionId === authorSessionId,
-  );
+  const index = items.findIndex((item) => item.id === id);
 
   if (index === -1) {
     return null;

@@ -204,7 +204,6 @@ export async function incrementSupabaseCelebrationReaction(id: string) {
 export async function updateSupabaseCelebrationPosition(
   id: string,
   position: CelebrationPositionInput,
-  authorSessionId: string,
 ) {
   const client = getClient();
 
@@ -220,7 +219,6 @@ export async function updateSupabaseCelebrationPosition(
       note_rotate: position.noteRotate,
     })
     .eq("id", normalizeId(id))
-    .eq("author_session_id", authorSessionId)
     .select("id, name, comment, created_at, reactions, author_session_id, note_x, note_y, note_rotate, city, region, country")
     .single();
 

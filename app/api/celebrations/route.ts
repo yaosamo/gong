@@ -261,9 +261,6 @@ export async function PATCH(request: Request) {
     }
 
     if (payload.action === "update_position") {
-      if (!authorSessionId) {
-        return NextResponse.json({ error: "Author session is required." }, { status: 400 });
-      }
       const noteX = Number(payload.noteX);
       const noteY = Number(payload.noteY);
       const noteRotate = Number(payload.noteRotate);
@@ -282,7 +279,7 @@ export async function PATCH(request: Request) {
         noteX,
         noteY,
         noteRotate,
-      }, authorSessionId).catch((error) => {
+      }).catch((error) => {
         remoteError = getSupabaseErrorMessage(error);
         return null;
       });
@@ -302,7 +299,7 @@ export async function PATCH(request: Request) {
         noteX,
         noteY,
         noteRotate,
-      }, authorSessionId);
+      });
 
       if (!celebration) {
         return NextResponse.json({ error: "Celebration not found." }, { status: 404 });

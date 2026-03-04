@@ -718,12 +718,6 @@ export default function HomePage() {
         const draggedCelebration = celebrations.find((item) => item.id === dragState.id);
 
         if (draggedCelebration) {
-          if (draggedCelebration.authorSessionId !== sessionId) {
-            dragStateRef.current = null;
-            setDraggingRecordId(null);
-            return;
-          }
-
           setCelebrations((current) =>
             current.map((celebration) =>
               celebration.id === dragState.id
@@ -755,7 +749,6 @@ export default function HomePage() {
             body: JSON.stringify({
               id: dragState.id,
               action: "update_position",
-              authorSessionId: sessionId,
               ...nextPosition,
             }),
           }).catch(() => {});
@@ -781,13 +774,12 @@ export default function HomePage() {
       void gongAudioRef.current.play().catch(() => {});
     }
 
+    const activeOwnedCelebration =
+      selectedCelebration?.authorSessionId === sessionId ? selectedCelebration : null;
     const nextCelebration =
-      selectedCelebration ??
-      (() => {
-        const pool = celebrations;
-        const index = Math.floor(Math.random() * pool.length);
-        return pool[index] ?? null;
-      })();
+      activeOwnedCelebration ??
+      celebrations.find((celebration) => celebration.authorSessionId === sessionId) ??
+      null;
 
     if (!nextCelebration) {
       setSessionFallbackHits((current) => current + 1);
@@ -1158,12 +1150,6 @@ export default function HomePage() {
       return;
     }
 
-    const celebration = celebrations.find((item) => item.id === recordId);
-
-    if (celebration && celebration.authorSessionId !== sessionId) {
-      return;
-    }
-
     const rect = event.currentTarget.getBoundingClientRect();
     dragStateRef.current = {
       id: recordId,
@@ -1368,9 +1354,6 @@ export default function HomePage() {
               const top = dragPositions[record.id]?.y ?? `${(settled?.y ?? record.y)}%`;
               const rotate = settled?.rotate ?? record.rotate;
               const theme = getRecordTheme(record.id);
-              const ownedCelebration = celebrations.find((item) => item.id === record.id);
-              const isOwnedRecord =
-                !record.isPersisted || ownedCelebration?.authorSessionId === sessionId;
 
               return (
             <div
@@ -1398,11 +1381,7 @@ export default function HomePage() {
                 background: theme.card,
                 boxShadow: theme.shadow,
                 pointerEvents: "auto",
-                cursor: isOwnedRecord
-                  ? draggingRecordId === record.id
-                    ? "grabbing"
-                    : "grab"
-                  : "default",
+                cursor: draggingRecordId === record.id ? "grabbing" : "grab",
                 userSelect: "none",
               }}
             >
