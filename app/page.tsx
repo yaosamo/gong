@@ -14,7 +14,11 @@ import {
   type ConfettiSettings,
   type LightSettings,
 } from "@/lib/scene-config";
-import type { Celebration, CelebrationInput } from "@/lib/types";
+import type {
+  Celebration,
+  CelebrationInput,
+  CelebrationPositionInput,
+} from "@/lib/types";
 import { formatCelebrationDate } from "@/lib/utils";
 
 type SampleRecord = {
@@ -32,6 +36,9 @@ type FloatingRecord = {
   author?: string;
   emoji: string;
   reactions: number;
+  noteX?: number | null;
+  noteY?: number | null;
+  noteRotate?: number | null;
   isPersisted?: boolean;
   isActive?: boolean;
 };
@@ -238,9 +245,26 @@ function layoutFloatingRecords(records: FloatingRecord[]) {
 
   return records.map((record, index) => {
     const seed = Math.abs(hashString(record.id));
-    const startIndex = seed % anchors.length;
     const width = record.comment ? 28 : 22;
     const height = record.comment ? (record.isActive ? 20 : 11) : record.isActive ? 16 : 8;
+
+    if (typeof record.noteX === "number" && typeof record.noteY === "number") {
+      occupied.push({
+        x: record.noteX,
+        y: record.noteY,
+        width,
+        height,
+      });
+
+      return {
+        ...record,
+        x: record.noteX,
+        y: record.noteY,
+        rotate: record.noteRotate ?? (((seed + index * 5) % 5) - 2),
+      };
+    }
+
+    const startIndex = seed % anchors.length;
 
     let x = 62;
     let y = 20;
@@ -328,11 +352,22 @@ export default function HomePage() {
     let cancelled = false;
 
     async function loadCelebrations() {
-      const response = await fetch("/api/celebrations", { cache: "no-store" });
-      const data = (await response.json()) as { celebrations: Celebration[] };
+      try {
+        const response = await fetch("/api/celebrations", { cache: "no-store" });
 
-      if (!cancelled) {
-        setCelebrations(data.celebrations);
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as { celebrations?: Celebration[] };
+
+        if (!cancelled) {
+          setCelebrations(data.celebrations ?? []);
+        }
+      } catch {
+        if (!cancelled) {
+          setCelebrations([]);
+        }
       }
     }
 
@@ -479,6 +514,77 @@ export default function HomePage() {
     }
 
     function onPointerUp() {
+      const dragState = dragStateRef.current;
+
+      if (!dragState) {
+        setDraggingRecordId(null);
+        return;
+      }
+
+      const draggedPixels = dragPositions[dragState.id];
+      const currentSettled = settledPositions[dragState.id];
+
+      if (draggedPixels) {
+        const nextPosition: CelebrationPositionInput = {
+          noteX: Math.max(6, Math.min(94, (draggedPixels.x / window.innerWidth) * 100)),
+          noteY: Math.max(8, Math.min(92, (draggedPixels.y / window.innerHeight) * 100)),
+          noteRotate: currentSettled?.rotate ?? 0,
+        };
+
+        setSettledPositions((current) => ({
+          ...current,
+          [dragState.id]: {
+            x: nextPosition.noteX,
+            y: nextPosition.noteY,
+            rotate: nextPosition.noteRotate,
+          },
+        }));
+        setDragPositions((current) => {
+          const next = { ...current };
+          delete next[dragState.id];
+          return next;
+        });
+
+        const draggedCelebration = celebrations.find((item) => item.id === dragState.id);
+
+        if (draggedCelebration) {
+          setCelebrations((current) =>
+            current.map((celebration) =>
+              celebration.id === dragState.id
+                ? {
+                    ...celebration,
+                    noteX: nextPosition.noteX,
+                    noteY: nextPosition.noteY,
+                    noteRotate: nextPosition.noteRotate,
+                  }
+                : celebration,
+            ),
+          );
+          setSelectedCelebration((current) =>
+            current?.id === dragState.id
+              ? {
+                  ...current,
+                  noteX: nextPosition.noteX,
+                  noteY: nextPosition.noteY,
+                  noteRotate: nextPosition.noteRotate,
+                }
+              : current,
+          );
+
+          void fetch("/api/celebrations", {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              id: dragState.id,
+              action: "update_position",
+              ...nextPosition,
+            }),
+          }).catch(() => {});
+        }
+      }
+
       dragStateRef.current = null;
       setDraggingRecordId(null);
     }
@@ -490,7 +596,7 @@ export default function HomePage() {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
     };
-  }, []);
+  }, [celebrations, dragPositions, settledPositions]);
 
   function strike() {
     if (!isMuted && gongAudioRef.current) {
@@ -595,6 +701,9 @@ export default function HomePage() {
             author: selectedCelebration?.name,
             emoji: activeRecordEmoji,
             reactions: selectedCelebration?.reactions ?? 0,
+            noteX: selectedCelebration?.noteX,
+            noteY: selectedCelebration?.noteY,
+            noteRotate: selectedCelebration?.noteRotate,
             isPersisted: Boolean(selectedCelebration),
             isActive: true,
           } satisfies FloatingRecord,
@@ -612,6 +721,9 @@ export default function HomePage() {
             author: celebration.name,
             emoji: getRecordEmoji(celebration.id),
             reactions: celebration.reactions,
+            noteX: celebration.noteX,
+            noteY: celebration.noteY,
+            noteRotate: celebration.noteRotate,
             isPersisted: true,
           }) satisfies FloatingRecord,
       ),
@@ -682,44 +794,53 @@ export default function HomePage() {
     }
 
     startInlineSubmit(async () => {
-      const response = await fetch("/api/celebrations", {
-        method: selectedCelebration ? "PATCH" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(
+      try {
+        const response = await fetch("/api/celebrations", {
+          method: selectedCelebration ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(
+            selectedCelebration
+              ? {
+                  id: selectedCelebration.id,
+                  action: "update",
+                  ...payload,
+                }
+              : payload,
+          ),
+        });
+
+        if (!response.ok) {
+          setInlineError("Could not save celebration.");
+          return;
+        }
+
+        const data = (await response.json()) as { celebration?: Celebration };
+
+        if (!data.celebration) {
+          setInlineError("Could not save celebration.");
+          return;
+        }
+
+        const celebration = data.celebration;
+        setCelebrations((current) =>
           selectedCelebration
-            ? {
-                id: selectedCelebration.id,
-                action: "update",
-                ...payload,
-              }
-            : payload,
-        ),
-      });
-
-      if (!response.ok) {
+            ? current.map((item) => (item.id === celebration.id ? celebration : item))
+            : [celebration, ...current].sort(
+                (a, b) => +new Date(b.createdAt) - +new Date(a.createdAt),
+              ),
+        );
+        setSelectedCelebration(celebration);
+        setSessionHitCounts((current) => ({
+          ...current,
+          [celebration.id]: current[celebration.id] ?? 1,
+        }));
+        setHasRung(true);
+        closeInlineForm();
+      } catch {
         setInlineError("Could not save celebration.");
-        return;
       }
-
-      const data = (await response.json()) as { celebration: Celebration };
-      setCelebrations((current) =>
-        selectedCelebration
-          ? current.map((celebration) =>
-              celebration.id === data.celebration.id ? data.celebration : celebration,
-            )
-          : [data.celebration, ...current].sort(
-              (a, b) => +new Date(b.createdAt) - +new Date(a.createdAt),
-            ),
-      );
-      setSelectedCelebration(data.celebration);
-      setSessionHitCounts((current) => ({
-        ...current,
-        [data.celebration.id]: current[data.celebration.id] ?? 1,
-      }));
-      setHasRung(true);
-      closeInlineForm();
     });
   }
 
@@ -731,29 +852,33 @@ export default function HomePage() {
     setDeleteError("");
 
     startDeleteTransition(async () => {
-      const response = await fetch(
-        `/api/celebrations?id=${encodeURIComponent(selectedCelebration.id)}`,
-        {
-          method: "DELETE",
-        },
-      );
+      try {
+        const response = await fetch(
+          `/api/celebrations?id=${encodeURIComponent(selectedCelebration.id)}`,
+          {
+            method: "DELETE",
+          },
+        );
 
-      if (!response.ok) {
+        if (!response.ok) {
+          setDeleteError("Could not delete celebration.");
+          return;
+        }
+
+        setCelebrations((current) => current.filter((item) => item.id !== selectedCelebration.id));
+        setSessionHitCounts((current) => {
+          const next = { ...current };
+          delete next[selectedCelebration.id];
+          return next;
+        });
+        setSelectedCelebration(null);
+        setIsInlineFormOpen(false);
+        setInlineError("");
+        setInlineName("");
+        setInlineComment("");
+      } catch {
         setDeleteError("Could not delete celebration.");
-        return;
       }
-
-      setCelebrations((current) => current.filter((item) => item.id !== selectedCelebration.id));
-      setSessionHitCounts((current) => {
-        const next = { ...current };
-        delete next[selectedCelebration.id];
-        return next;
-      });
-      setSelectedCelebration(null);
-      setIsInlineFormOpen(false);
-      setInlineError("");
-      setInlineName("");
-      setInlineComment("");
     });
   }
 
@@ -773,34 +898,45 @@ export default function HomePage() {
     }
 
     void (async () => {
-      const response = await fetch("/api/celebrations", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id: record.id,
-          action: "react",
-        }),
-      });
+      try {
+        const response = await fetch("/api/celebrations", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id: record.id,
+            action: "react",
+          }),
+        });
 
-      if (!response.ok) {
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as { celebration?: Celebration };
+
+        if (!data.celebration) {
+          return;
+        }
+
+        const celebration = data.celebration;
+
+        setCelebrations((current) =>
+          current.map((item) =>
+            item.id === celebration.id
+              ? { ...item, reactions: celebration.reactions }
+              : item,
+          ),
+        );
+        setSelectedCelebration((current) =>
+          current?.id === celebration.id
+            ? { ...current, reactions: celebration.reactions }
+            : current,
+        );
+      } catch {
         return;
       }
-
-      const data = (await response.json()) as { celebration: Celebration };
-      setCelebrations((current) =>
-        current.map((celebration) =>
-          celebration.id === data.celebration.id
-            ? { ...celebration, reactions: data.celebration.reactions }
-            : celebration,
-        ),
-      );
-      setSelectedCelebration((current) =>
-        current?.id === data.celebration.id
-          ? { ...current, reactions: data.celebration.reactions }
-          : current,
-      );
     })();
   }
 
@@ -863,27 +999,31 @@ export default function HomePage() {
   }
 
   async function deleteAllCelebrations() {
-    const response = await fetch("/api/celebrations?all=1", {
-      method: "DELETE",
-    });
+    try {
+      const response = await fetch("/api/celebrations?all=1", {
+        method: "DELETE",
+      });
 
-    if (!response.ok) {
+      if (!response.ok) {
+        return;
+      }
+
+      setCelebrations([]);
+      setSelectedCelebration(null);
+      setSessionHitCounts({});
+      setSessionFallbackHits(0);
+      setReactedRecordIds([]);
+      setDragPositions({});
+      setSettledPositions({});
+      setSampleReactionCounts({});
+      setIsInlineFormOpen(false);
+      setInlineError("");
+      setDeleteError("");
+      setInlineName("");
+      setInlineComment("");
+    } catch {
       return;
     }
-
-    setCelebrations([]);
-    setSelectedCelebration(null);
-    setSessionHitCounts({});
-    setSessionFallbackHits(0);
-    setReactedRecordIds([]);
-    setDragPositions({});
-    setSettledPositions({});
-    setSampleReactionCounts({});
-    setIsInlineFormOpen(false);
-    setInlineError("");
-    setDeleteError("");
-    setInlineName("");
-    setInlineComment("");
   }
 
   return (

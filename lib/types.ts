@@ -4,6 +4,9 @@ export type Celebration = {
   comment: string;
   createdAt: string;
   reactions: number;
+  noteX: number | null;
+  noteY: number | null;
+  noteRotate: number | null;
   locationLabel: string;
   city: string | null;
   region: string | null;
@@ -13,6 +16,12 @@ export type Celebration = {
 export type CelebrationInput = {
   name: string;
   comment: string;
+};
+
+export type CelebrationPositionInput = {
+  noteX: number;
+  noteY: number;
+  noteRotate: number;
 };
 
 export type CursorPresence = {

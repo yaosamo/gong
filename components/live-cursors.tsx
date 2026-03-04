@@ -30,6 +30,7 @@ export function LiveCursors() {
     const client = getSupabaseBrowserClient();
 
     if (!client) {
+      console.warn("[live-cursors] Supabase browser env is missing.");
       return;
     }
 
@@ -59,6 +60,10 @@ export function LiveCursors() {
         setCursors(next);
       })
       .subscribe(async (status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          console.error("[live-cursors] channel status:", status);
+        }
+
         if (status === "SUBSCRIBED") {
           await channel.track({
             id: idRef.current,
@@ -86,8 +91,8 @@ export function LiveCursors() {
 
     return () => {
       window.removeEventListener("pointermove", onMove);
-      channel.untrack();
-      channel.unsubscribe();
+      void channel.untrack();
+      void channel.unsubscribe();
     };
   }, [label]);
 

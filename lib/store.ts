@@ -2,7 +2,11 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
 import { buildLocationLabel } from "@/lib/utils";
-import type { Celebration, CelebrationInput } from "@/lib/types";
+import type {
+  Celebration,
+  CelebrationInput,
+  CelebrationPositionInput,
+} from "@/lib/types";
 
 const dataDir = path.join(process.cwd(), "data");
 const storePath = path.join(dataDir, "celebrations.json");
@@ -78,6 +82,9 @@ export async function createLocalCelebration(
     comment: input.comment.trim(),
     createdAt: new Date().toISOString(),
     reactions: 0,
+    noteX: null,
+    noteY: null,
+    noteRotate: null,
     city: location.city,
     region: location.region,
     country: location.country,
@@ -150,6 +157,42 @@ export async function updateLocalCelebration(id: string, input: CelebrationInput
     ...current,
     name: input.name.trim(),
     comment: input.comment.trim(),
+  };
+
+  const nextItems = [...items];
+  nextItems[index] = updated;
+  await writeCelebrations(nextItems);
+
+  return {
+    ...updated,
+    reactions: reactions[id] ?? updated.reactions ?? 0,
+    locationLabel: buildLocationLabel(updated),
+  } satisfies Celebration;
+}
+
+export async function updateLocalCelebrationPosition(
+  id: string,
+  position: CelebrationPositionInput,
+) {
+  const items = await readCelebrations();
+  const reactions = await readReactions();
+  const index = items.findIndex((item) => item.id === id);
+
+  if (index === -1) {
+    return null;
+  }
+
+  const current = items[index];
+
+  if (!current) {
+    return null;
+  }
+
+  const updated: StoredCelebration = {
+    ...current,
+    noteX: position.noteX,
+    noteY: position.noteY,
+    noteRotate: position.noteRotate,
   };
 
   const nextItems = [...items];
