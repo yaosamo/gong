@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, Float, OrbitControls, useTexture } from "@react-three/drei";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import ReactCanvasConfetti from "react-canvas-confetti";
 import type { TCanvasConfettiInstance } from "react-canvas-confetti/dist/types";
@@ -223,10 +223,16 @@ function CameraIntro({
 }) {
   const { camera } = useThree();
   const progressRef = useRef(0);
+  const hasInitializedRef = useRef(false);
 
   useEffect(() => {
+    if (hasInitializedRef.current) {
+      return;
+    }
+
+    hasInitializedRef.current = true;
     camera.position.set(introStartPosition.x, introStartPosition.y, introStartPosition.z);
-  }, [camera, introStartPosition]);
+  }, [camera, introStartPosition.x, introStartPosition.y, introStartPosition.z]);
 
   useFrame((_, delta) => {
     const controls = controlsRef.current;
@@ -287,13 +293,18 @@ export function GongScene({
   const confettiRef = useRef<TCanvasConfettiInstance | null>(null);
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const [confettiReady, setConfettiReady] = useState(false);
-  const sceneCamera = isMobile
-    ? { x: -2.9, y: 0.1, z: 7.7 }
-    : DEFAULT_CAMERA_POSITION;
-  const introCamera = isMobile
-    ? { x: -8.6, y: 2.4, z: 13.6 }
-    : { x: -13.4, y: 3.6, z: 18.5 };
-  const orbitTarget: [number, number, number] = isMobile ? [0.18, 0.62, 0] : [0, 0.35, 0];
+  const sceneCamera = useMemo(
+    () => (isMobile ? { x: -2.9, y: 0.1, z: 7.7 } : DEFAULT_CAMERA_POSITION),
+    [isMobile],
+  );
+  const introCamera = useMemo(
+    () => (isMobile ? { x: -8.6, y: 2.4, z: 13.6 } : { x: -13.4, y: 3.6, z: 18.5 }),
+    [isMobile],
+  );
+  const orbitTarget = useMemo<[number, number, number]>(
+    () => (isMobile ? [0.18, 0.62, 0] : [0, 0.35, 0]),
+    [isMobile],
+  );
 
   function fireConfetti() {
     const confetti = confettiRef.current;
