@@ -1,5 +1,6 @@
 "use client";
 
+import { useTransition } from "react";
 import type { Celebration } from "@/lib/types";
 import { formatCelebrationDate } from "@/lib/utils";
 
@@ -7,11 +8,15 @@ export function CelebrationLog({
   celebrations,
   isOpen,
   onClose,
+  onDeleteAll,
 }: {
   celebrations: Celebration[];
   isOpen: boolean;
   onClose: () => void;
+  onDeleteAll: () => Promise<void>;
 }) {
+  const [isPending, startTransition] = useTransition();
+
   return (
     <aside
       style={{
@@ -52,19 +57,36 @@ export function CelebrationLog({
             Full feed, newest first.
           </div>
         </div>
-        <button
-          onClick={onClose}
-          type="button"
-          style={{
-            border: "1px solid rgba(16, 17, 18, 0.12)",
-            background: "#fff",
-            borderRadius: 999,
-            height: 40,
-            width: 40,
-          }}
-        >
-          Close
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            onClick={() => startTransition(async () => onDeleteAll())}
+            disabled={isPending || !celebrations.length}
+            type="button"
+            style={{
+              border: "1px solid rgba(154, 52, 18, 0.14)",
+              background: "rgba(255, 245, 240, 0.9)",
+              color: "rgba(154, 52, 18, 0.92)",
+              borderRadius: 999,
+              padding: "0 14px",
+              height: 40,
+            }}
+          >
+            {isPending ? "Deleting..." : "Delete All"}
+          </button>
+          <button
+            onClick={onClose}
+            type="button"
+            style={{
+              border: "1px solid rgba(16, 17, 18, 0.12)",
+              background: "#fff",
+              borderRadius: 999,
+              height: 40,
+              width: 40,
+            }}
+          >
+            Close
+          </button>
+        </div>
       </div>
 
       <div

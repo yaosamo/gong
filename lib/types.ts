@@ -3,6 +3,7 @@ export type Celebration = {
   name: string;
   comment: string;
   createdAt: string;
+  reactions: number;
   locationLabel: string;
   city: string | null;
   region: string | null;

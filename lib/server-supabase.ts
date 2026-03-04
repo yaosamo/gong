@@ -33,6 +33,7 @@ function mapRow(row: Row): Celebration {
     name: row.name,
     comment: row.comment,
     createdAt: row.created_at,
+    reactions: 0,
     city: row.city,
     region: row.region,
     country: row.country,
@@ -106,4 +107,44 @@ export async function deleteSupabaseCelebration(id: string) {
   }
 
   return (count ?? 0) > 0;
+}
+
+export async function updateSupabaseCelebration(id: string, input: CelebrationInput) {
+  const client = getClient();
+
+  if (!client) {
+    return null;
+  }
+
+  const { data, error } = await client
+    .from("celebrations")
+    .update({
+      name: input.name.trim(),
+      comment: input.comment.trim(),
+    })
+    .eq("id", id)
+    .select("id, name, comment, created_at, city, region, country")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return mapRow(data as Row);
+}
+
+export async function deleteAllSupabaseCelebrations() {
+  const client = getClient();
+
+  if (!client) {
+    return null;
+  }
+
+  const { error } = await client.from("celebrations").delete().not("id", "is", null);
+
+  if (error) {
+    throw error;
+  }
+
+  return true;
 }
