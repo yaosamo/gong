@@ -82,6 +82,7 @@ export async function createLocalCelebration(
     comment: input.comment.trim(),
     createdAt: new Date().toISOString(),
     reactions: 0,
+    authorSessionId: input.authorSessionId,
     noteX: null,
     noteY: null,
     noteRotate: null,
@@ -98,10 +99,12 @@ export async function createLocalCelebration(
   } satisfies Celebration;
 }
 
-export async function deleteLocalCelebration(id: string) {
+export async function deleteLocalCelebration(id: string, authorSessionId: string) {
   const items = await readCelebrations();
   const reactions = await readReactions();
-  const nextItems = items.filter((item) => item.id !== id);
+  const nextItems = items.filter(
+    (item) => !(item.id === id && item.authorSessionId === authorSessionId),
+  );
   const deleted = nextItems.length !== items.length;
 
   if (deleted) {
@@ -141,7 +144,9 @@ export async function incrementLocalCelebrationReaction(id: string) {
 export async function updateLocalCelebration(id: string, input: CelebrationInput) {
   const items = await readCelebrations();
   const reactions = await readReactions();
-  const index = items.findIndex((item) => item.id === id);
+  const index = items.findIndex(
+    (item) => item.id === id && item.authorSessionId === input.authorSessionId,
+  );
 
   if (index === -1) {
     return null;
@@ -173,10 +178,13 @@ export async function updateLocalCelebration(id: string, input: CelebrationInput
 export async function updateLocalCelebrationPosition(
   id: string,
   position: CelebrationPositionInput,
+  authorSessionId: string,
 ) {
   const items = await readCelebrations();
   const reactions = await readReactions();
-  const index = items.findIndex((item) => item.id === id);
+  const index = items.findIndex(
+    (item) => item.id === id && item.authorSessionId === authorSessionId,
+  );
 
   if (index === -1) {
     return null;

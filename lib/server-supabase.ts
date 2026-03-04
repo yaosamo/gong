@@ -8,6 +8,7 @@ type Row = {
   comment: string;
   created_at: string;
   reactions: number | null;
+  author_session_id: string | null;
   note_x: number | null;
   note_y: number | null;
   note_rotate: number | null;
@@ -57,6 +58,7 @@ function mapRow(row: Row): Celebration {
     comment: row.comment,
     createdAt: row.created_at,
     reactions: row.reactions ?? 0,
+    authorSessionId: row.author_session_id,
     noteX: row.note_x,
     noteY: row.note_y,
     noteRotate: row.note_rotate,
@@ -76,7 +78,7 @@ export async function listSupabaseCelebrations() {
 
   const { data, error } = await client
     .from("celebrations")
-    .select("id, name, comment, created_at, reactions, note_x, note_y, note_rotate, city, region, country")
+    .select("id, name, comment, created_at, reactions, author_session_id, note_x, note_y, note_rotate, city, region, country")
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -103,6 +105,7 @@ export async function createSupabaseCelebration(
       name: input.name.trim(),
       comment: input.comment.trim(),
       reactions: 0,
+      author_session_id: input.authorSessionId,
       note_x: null,
       note_y: null,
       note_rotate: null,
@@ -110,7 +113,7 @@ export async function createSupabaseCelebration(
       region: location.region,
       country: location.country,
     })
-    .select("id, name, comment, created_at, reactions, note_x, note_y, note_rotate, city, region, country")
+    .select("id, name, comment, created_at, reactions, author_session_id, note_x, note_y, note_rotate, city, region, country")
     .single();
 
   if (error) {
@@ -120,7 +123,7 @@ export async function createSupabaseCelebration(
   return mapRow(data as Row);
 }
 
-export async function deleteSupabaseCelebration(id: string) {
+export async function deleteSupabaseCelebration(id: string, authorSessionId: string) {
   const client = getClient();
 
   if (!client) {
@@ -130,7 +133,8 @@ export async function deleteSupabaseCelebration(id: string) {
   const { error, count } = await client
     .from("celebrations")
     .delete({ count: "exact" })
-    .eq("id", normalizeId(id));
+    .eq("id", normalizeId(id))
+    .eq("author_session_id", authorSessionId);
 
   if (error) {
     throw error;
@@ -153,7 +157,8 @@ export async function updateSupabaseCelebration(id: string, input: CelebrationIn
       comment: input.comment.trim(),
     })
     .eq("id", normalizeId(id))
-    .select("id, name, comment, created_at, reactions, note_x, note_y, note_rotate, city, region, country")
+    .eq("author_session_id", input.authorSessionId)
+    .select("id, name, comment, created_at, reactions, author_session_id, note_x, note_y, note_rotate, city, region, country")
     .single();
 
   if (error) {
@@ -172,7 +177,7 @@ export async function incrementSupabaseCelebrationReaction(id: string) {
 
   const { data: current, error: currentError } = await client
     .from("celebrations")
-    .select("id, name, comment, created_at, reactions, note_x, note_y, note_rotate, city, region, country")
+    .select("id, name, comment, created_at, reactions, author_session_id, note_x, note_y, note_rotate, city, region, country")
     .eq("id", normalizeId(id))
     .single();
 
@@ -186,7 +191,7 @@ export async function incrementSupabaseCelebrationReaction(id: string) {
     .from("celebrations")
     .update({ reactions: nextReactions })
     .eq("id", normalizeId(id))
-    .select("id, name, comment, created_at, reactions, note_x, note_y, note_rotate, city, region, country")
+    .select("id, name, comment, created_at, reactions, author_session_id, note_x, note_y, note_rotate, city, region, country")
     .single();
 
   if (error) {
@@ -199,6 +204,7 @@ export async function incrementSupabaseCelebrationReaction(id: string) {
 export async function updateSupabaseCelebrationPosition(
   id: string,
   position: CelebrationPositionInput,
+  authorSessionId: string,
 ) {
   const client = getClient();
 
@@ -214,7 +220,8 @@ export async function updateSupabaseCelebrationPosition(
       note_rotate: position.noteRotate,
     })
     .eq("id", normalizeId(id))
-    .select("id, name, comment, created_at, reactions, note_x, note_y, note_rotate, city, region, country")
+    .eq("author_session_id", authorSessionId)
+    .select("id, name, comment, created_at, reactions, author_session_id, note_x, note_y, note_rotate, city, region, country")
     .single();
 
   if (error) {

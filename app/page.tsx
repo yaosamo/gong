@@ -36,6 +36,7 @@ type CelebrationRow = {
   comment: string;
   created_at: string;
   reactions: number | null;
+  author_session_id: string | null;
   note_x: number | null;
   note_y: number | null;
   note_rotate: number | null;
@@ -244,6 +245,7 @@ function mapCelebrationRow(row: CelebrationRow): Celebration {
     comment: row.comment,
     createdAt: row.created_at,
     reactions: row.reactions ?? 0,
+    authorSessionId: row.author_session_id,
     noteX: row.note_x,
     noteY: row.note_y,
     noteRotate: row.note_rotate,
@@ -349,6 +351,7 @@ function layoutFloatingRecords(records: FloatingRecord[]) {
 
 export default function HomePage() {
   const [isMobile, setIsMobile] = useState(false);
+  const [sessionId, setSessionId] = useState("");
   const [celebrations, setCelebrations] = useState<Celebration[]>([]);
   const [selectedCelebration, setSelectedCelebration] = useState<Celebration | null>(null);
   const [sessionHitCounts, setSessionHitCounts] = useState<Record<string, number>>({});
@@ -382,6 +385,30 @@ export default function HomePage() {
   const [settledPositions, setSettledPositions] = useState<Record<string, SettledPosition>>({});
   const dragStateRef = useRef<DragState>(null);
   const gongAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    try {
+      const stored = window.sessionStorage.getItem("gong-author-session-id");
+
+      if (stored) {
+        setSessionId(stored);
+        return;
+      }
+
+      const next =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2);
+      window.sessionStorage.setItem("gong-author-session-id", next);
+      setSessionId(next);
+    } catch {
+      setSessionId(
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2),
+      );
+    }
+  }, []);
 
   useEffect(() => {
     function updateIsMobile() {
@@ -691,6 +718,12 @@ export default function HomePage() {
         const draggedCelebration = celebrations.find((item) => item.id === dragState.id);
 
         if (draggedCelebration) {
+          if (draggedCelebration.authorSessionId !== sessionId) {
+            dragStateRef.current = null;
+            setDraggingRecordId(null);
+            return;
+          }
+
           setCelebrations((current) =>
             current.map((celebration) =>
               celebration.id === dragState.id
@@ -722,6 +755,7 @@ export default function HomePage() {
             body: JSON.stringify({
               id: dragState.id,
               action: "update_position",
+              authorSessionId: sessionId,
               ...nextPosition,
             }),
           }).catch(() => {});
@@ -739,7 +773,7 @@ export default function HomePage() {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
     };
-  }, [celebrations, dragPositions, settledPositions]);
+  }, [celebrations, dragPositions, sessionId, settledPositions]);
 
   function strike() {
     if (!isMuted && gongAudioRef.current) {
@@ -956,15 +990,21 @@ export default function HomePage() {
     const payload: CelebrationInput = {
       name: inlineName.trim(),
       comment: inlineComment.trim(),
+      authorSessionId: sessionId,
     };
 
-    if (!payload.name || !payload.comment) {
+    if (!payload.name || !payload.comment || !payload.authorSessionId) {
       setInlineError("Both fields are required.");
       return;
     }
 
     startInlineSubmit(async () => {
       try {
+        if (selectedCelebration && selectedCelebration.authorSessionId !== sessionId) {
+          setInlineError("You can only edit your own celebration.");
+          return;
+        }
+
         const response = await fetch("/api/celebrations", {
           method: selectedCelebration ? "PATCH" : "POST",
           headers: {
@@ -1016,7 +1056,7 @@ export default function HomePage() {
   }
 
   function deleteSelectedCelebration() {
-    if (!selectedCelebration) {
+    if (!selectedCelebration || selectedCelebration.authorSessionId !== sessionId) {
       return;
     }
 
@@ -1025,7 +1065,7 @@ export default function HomePage() {
     startDeleteTransition(async () => {
       try {
         const response = await fetch(
-          `/api/celebrations?id=${encodeURIComponent(selectedCelebration.id)}`,
+          `/api/celebrations?id=${encodeURIComponent(selectedCelebration.id)}&authorSessionId=${encodeURIComponent(sessionId)}`,
           {
             method: "DELETE",
           },
@@ -1115,6 +1155,12 @@ export default function HomePage() {
     const target = event.target as HTMLElement | null;
 
     if (target?.closest("button, input, textarea")) {
+      return;
+    }
+
+    const celebration = celebrations.find((item) => item.id === recordId);
+
+    if (celebration && celebration.authorSessionId !== sessionId) {
       return;
     }
 
@@ -1322,6 +1368,9 @@ export default function HomePage() {
               const top = dragPositions[record.id]?.y ?? `${(settled?.y ?? record.y)}%`;
               const rotate = settled?.rotate ?? record.rotate;
               const theme = getRecordTheme(record.id);
+              const ownedCelebration = celebrations.find((item) => item.id === record.id);
+              const isOwnedRecord =
+                !record.isPersisted || ownedCelebration?.authorSessionId === sessionId;
 
               return (
             <div
@@ -1349,7 +1398,11 @@ export default function HomePage() {
                 background: theme.card,
                 boxShadow: theme.shadow,
                 pointerEvents: "auto",
-                cursor: draggingRecordId === record.id ? "grabbing" : "grab",
+                cursor: isOwnedRecord
+                  ? draggingRecordId === record.id
+                    ? "grabbing"
+                    : "grab"
+                  : "default",
                 userSelect: "none",
               }}
             >
@@ -1515,24 +1568,26 @@ export default function HomePage() {
                         </span>
                         <span>{record.reactions}</span>
                       </button>
-                      <button
-                        onClick={openInlineForm}
-                        type="button"
-                        style={{
-                          padding: 0,
-                          border: "none",
-                        background: "transparent",
-                        fontSize: 15,
-                        color: theme.accent,
-                        textDecoration: "underline",
-                        textUnderlineOffset: "0.18em",
-                        pointerEvents: "auto",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {selectedCelebration ? "edit" : "add comment"}
-                      </button>
-                      {selectedCelebration ? (
+                      {!selectedCelebration || selectedCelebration.authorSessionId === sessionId ? (
+                        <button
+                          onClick={openInlineForm}
+                          type="button"
+                          style={{
+                            padding: 0,
+                            border: "none",
+                            background: "transparent",
+                            fontSize: 15,
+                            color: theme.accent,
+                            textDecoration: "underline",
+                            textUnderlineOffset: "0.18em",
+                            pointerEvents: "auto",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {selectedCelebration ? "edit" : "add comment"}
+                        </button>
+                      ) : null}
+                      {selectedCelebration && selectedCelebration.authorSessionId === sessionId ? (
                         <button
                           onClick={deleteSelectedCelebration}
                           disabled={isDeleting}

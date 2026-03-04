@@ -4,6 +4,7 @@ export type Celebration = {
   comment: string;
   createdAt: string;
   reactions: number;
+  authorSessionId: string | null;
   noteX: number | null;
   noteY: number | null;
   noteRotate: number | null;
@@ -16,6 +17,7 @@ export type Celebration = {
 export type CelebrationInput = {
   name: string;
   comment: string;
+  authorSessionId: string;
 };
 
 export type CelebrationPositionInput = {

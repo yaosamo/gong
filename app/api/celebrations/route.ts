@@ -48,14 +48,16 @@ export async function POST(request: Request) {
     const payload = (await request.json()) as {
       name?: string;
       comment?: string;
+      authorSessionId?: string;
     };
 
     const name = payload.name?.trim() ?? "";
     const comment = payload.comment?.trim() ?? "";
+    const authorSessionId = payload.authorSessionId?.trim() ?? "";
 
-    if (!name || !comment) {
+    if (!name || !comment || !authorSessionId) {
       return NextResponse.json(
-        { error: "Name and comment are required." },
+        { error: "Name, comment, and session are required." },
         { status: 400 },
       );
     }
@@ -65,7 +67,7 @@ export async function POST(request: Request) {
     let remoteError: string | null = null;
 
     const remoteCelebration = await createSupabaseCelebration(
-      { name, comment },
+      { name, comment, authorSessionId },
       {
         city: location.city,
         region: location.region,
@@ -88,7 +90,7 @@ export async function POST(request: Request) {
     }
 
     const celebration = await createLocalCelebration(
-      { name, comment },
+      { name, comment, authorSessionId },
       {
         city: location.city,
         region: location.region,
@@ -110,6 +112,7 @@ export async function DELETE(request: Request) {
     const url = new URL(request.url);
     const clearAll = url.searchParams.get("all")?.trim() === "1";
     const id = url.searchParams.get("id")?.trim() ?? "";
+    const authorSessionId = url.searchParams.get("authorSessionId")?.trim() ?? "";
 
     if (clearAll) {
       const deletedRemote = await deleteAllSupabaseCelebrations().catch(() => null);
@@ -132,8 +135,11 @@ export async function DELETE(request: Request) {
     if (!id) {
       return NextResponse.json({ error: "Celebration id is required." }, { status: 400 });
     }
+    if (!authorSessionId) {
+      return NextResponse.json({ error: "Author session is required." }, { status: 400 });
+    }
 
-    const deletedRemote = await deleteSupabaseCelebration(id).catch(() => null);
+    const deletedRemote = await deleteSupabaseCelebration(id, authorSessionId).catch(() => null);
 
     if (deletedRemote) {
       return NextResponse.json({ ok: true });
@@ -146,7 +152,7 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const deleted = await deleteLocalCelebration(id);
+    const deleted = await deleteLocalCelebration(id, authorSessionId);
 
     if (!deleted) {
       return NextResponse.json({ error: "Celebration not found." }, { status: 404 });
@@ -168,12 +174,14 @@ export async function PATCH(request: Request) {
       action?: string;
       name?: string;
       comment?: string;
+      authorSessionId?: string;
       noteX?: number;
       noteY?: number;
       noteRotate?: number;
     };
 
     const id = payload.id?.trim() ?? "";
+    const authorSessionId = payload.authorSessionId?.trim() ?? "";
 
     if (!id) {
       return NextResponse.json({ error: "Valid id is required." }, { status: 400 });
@@ -210,6 +218,9 @@ export async function PATCH(request: Request) {
     if (payload.action === "update") {
       const name = payload.name?.trim() ?? "";
       const comment = payload.comment?.trim() ?? "";
+      if (!authorSessionId) {
+        return NextResponse.json({ error: "Author session is required." }, { status: 400 });
+      }
 
       if (!name || !comment) {
         return NextResponse.json(
@@ -223,6 +234,7 @@ export async function PATCH(request: Request) {
       const remoteCelebration = await updateSupabaseCelebration(id, {
         name,
         comment,
+        authorSessionId,
       }).catch((error) => {
         remoteError = getSupabaseErrorMessage(error);
         return null;
@@ -239,7 +251,7 @@ export async function PATCH(request: Request) {
         );
       }
 
-      const celebration = await updateLocalCelebration(id, { name, comment });
+      const celebration = await updateLocalCelebration(id, { name, comment, authorSessionId });
 
       if (!celebration) {
         return NextResponse.json({ error: "Celebration not found." }, { status: 404 });
@@ -249,6 +261,9 @@ export async function PATCH(request: Request) {
     }
 
     if (payload.action === "update_position") {
+      if (!authorSessionId) {
+        return NextResponse.json({ error: "Author session is required." }, { status: 400 });
+      }
       const noteX = Number(payload.noteX);
       const noteY = Number(payload.noteY);
       const noteRotate = Number(payload.noteRotate);
@@ -267,7 +282,7 @@ export async function PATCH(request: Request) {
         noteX,
         noteY,
         noteRotate,
-      }).catch((error) => {
+      }, authorSessionId).catch((error) => {
         remoteError = getSupabaseErrorMessage(error);
         return null;
       });
@@ -287,7 +302,7 @@ export async function PATCH(request: Request) {
         noteX,
         noteY,
         noteRotate,
-      });
+      }, authorSessionId);
 
       if (!celebration) {
         return NextResponse.json({ error: "Celebration not found." }, { status: 404 });
