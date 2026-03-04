@@ -812,7 +812,8 @@ export default function HomePage() {
         });
 
         if (!response.ok) {
-          setInlineError("Could not save celebration.");
+          const data = (await response.json().catch(() => null)) as { error?: string } | null;
+          setInlineError(data?.error ?? "Could not save celebration.");
           return;
         }
 

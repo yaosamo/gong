@@ -5,6 +5,28 @@ import { getSupabaseBrowserClient } from "@/lib/supabase";
 import type { CursorPresence } from "@/lib/types";
 
 const palette = ["#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#111827"];
+const cursorNames = [
+  "Cool dude",
+  "Wizard",
+  "Cool bean",
+  "Sweet legend",
+  "Joy goblin",
+  "Happy camper",
+  "Party wizard",
+  "Bright soul",
+  "Good egg",
+  "Shiny human",
+  "Sparkle gremlin",
+  "Cheer machine",
+  "Delight unit",
+  "Tiny hero",
+  "Lucky noodle",
+  "Magic pal",
+  "Sunny rascal",
+  "Confetti captain",
+  "Fresh icon",
+  "Cosmic buddy",
+];
 
 function makeId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -24,7 +46,12 @@ export function LiveCursors() {
     colorRef.current = palette[Math.floor(Math.random() * palette.length)] ?? "#111827";
   }
 
-  const label = useMemo(() => `Guest ${idRef.current.slice(0, 4)}`, []);
+  const label = useMemo(() => {
+    const seed = idRef.current
+      .split("")
+      .reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    return cursorNames[seed % cursorNames.length] ?? "Cool dude";
+  }, []);
 
   useEffect(() => {
     const client = getSupabaseBrowserClient();
@@ -119,13 +146,39 @@ export function LiveCursors() {
               transition: "left 120ms linear, top 120ms linear, opacity 240ms ease",
             }}
           >
-            <svg width="18" height="24" viewBox="0 0 18 24" fill="none">
-              <path
-                d="M2 1L15 13H9L7 22L4.5 21L6.5 12H2V1Z"
-                fill={cursor.color}
-                stroke="#ffffff"
-                strokeWidth="1.2"
-              />
+            <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+              <g transform="rotate(-28 13 13)">
+                <rect
+                  x="4.2"
+                  y="4.8"
+                  width="11.2"
+                  height="7.2"
+                  rx="2.4"
+                  fill={cursor.color}
+                  stroke="#ffffff"
+                  strokeWidth="1.2"
+                />
+                <rect
+                  x="12.8"
+                  y="10.4"
+                  width="9.6"
+                  height="3.2"
+                  rx="1.6"
+                  fill="#7c4a22"
+                  stroke="#ffffff"
+                  strokeWidth="1.1"
+                />
+                <rect
+                  x="18.6"
+                  y="8.8"
+                  width="2.8"
+                  height="6.4"
+                  rx="1.4"
+                  fill={cursor.color}
+                  stroke="#ffffff"
+                  strokeWidth="1"
+                />
+              </g>
             </svg>
             <div
               style={{

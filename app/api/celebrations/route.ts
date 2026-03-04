@@ -13,6 +13,7 @@ import {
   createSupabaseCelebration,
   deleteAllSupabaseCelebrations,
   deleteSupabaseCelebration,
+  getSupabaseErrorMessage,
   incrementSupabaseCelebrationReaction,
   listSupabaseCelebrations,
   updateSupabaseCelebration,
@@ -61,6 +62,8 @@ export async function POST(request: Request) {
 
     const location = await resolveLocationFromRequest(request);
 
+    let remoteError: string | null = null;
+
     const remoteCelebration = await createSupabaseCelebration(
       { name, comment },
       {
@@ -68,7 +71,10 @@ export async function POST(request: Request) {
         region: location.region,
         country: location.country,
       },
-    ).catch(() => null);
+    ).catch((error) => {
+      remoteError = getSupabaseErrorMessage(error);
+      return null;
+    });
 
     if (remoteCelebration) {
       return NextResponse.json({ celebration: remoteCelebration }, { status: 201 });
@@ -76,8 +82,8 @@ export async function POST(request: Request) {
 
     if (isProductionRuntime()) {
       return NextResponse.json(
-        { error: "Celebration storage is not available." },
-        { status: 503 },
+        { error: remoteError ?? "Celebration storage is not available." },
+        { status: remoteError ? 500 : 503 },
       );
     }
 
@@ -174,7 +180,12 @@ export async function PATCH(request: Request) {
     }
 
     if (payload.action === "react") {
-      const remoteCelebration = await incrementSupabaseCelebrationReaction(id).catch(() => null);
+      let remoteError: string | null = null;
+
+      const remoteCelebration = await incrementSupabaseCelebrationReaction(id).catch((error) => {
+        remoteError = getSupabaseErrorMessage(error);
+        return null;
+      });
 
       if (remoteCelebration) {
         return NextResponse.json({ celebration: remoteCelebration });
@@ -182,8 +193,8 @@ export async function PATCH(request: Request) {
 
       if (isProductionRuntime()) {
         return NextResponse.json(
-          { error: "Celebration storage is not available." },
-          { status: 503 },
+          { error: remoteError ?? "Celebration storage is not available." },
+          { status: remoteError ? 500 : 503 },
         );
       }
 
@@ -207,10 +218,15 @@ export async function PATCH(request: Request) {
         );
       }
 
+      let remoteError: string | null = null;
+
       const remoteCelebration = await updateSupabaseCelebration(id, {
         name,
         comment,
-      }).catch(() => null);
+      }).catch((error) => {
+        remoteError = getSupabaseErrorMessage(error);
+        return null;
+      });
 
       if (remoteCelebration) {
         return NextResponse.json({ celebration: remoteCelebration });
@@ -218,8 +234,8 @@ export async function PATCH(request: Request) {
 
       if (isProductionRuntime()) {
         return NextResponse.json(
-          { error: "Celebration storage is not available." },
-          { status: 503 },
+          { error: remoteError ?? "Celebration storage is not available." },
+          { status: remoteError ? 500 : 503 },
         );
       }
 
@@ -245,11 +261,16 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: "Valid position is required." }, { status: 400 });
       }
 
+      let remoteError: string | null = null;
+
       const remoteCelebration = await updateSupabaseCelebrationPosition(id, {
         noteX,
         noteY,
         noteRotate,
-      }).catch(() => null);
+      }).catch((error) => {
+        remoteError = getSupabaseErrorMessage(error);
+        return null;
+      });
 
       if (remoteCelebration) {
         return NextResponse.json({ celebration: remoteCelebration });
@@ -257,8 +278,8 @@ export async function PATCH(request: Request) {
 
       if (isProductionRuntime()) {
         return NextResponse.json(
-          { error: "Celebration storage is not available." },
-          { status: 503 },
+          { error: remoteError ?? "Celebration storage is not available." },
+          { status: remoteError ? 500 : 503 },
         );
       }
 

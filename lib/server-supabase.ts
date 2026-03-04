@@ -31,6 +31,21 @@ function getClient() {
   });
 }
 
+function toErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "object" && error && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string") {
+      return message;
+    }
+  }
+
+  return "Unknown Supabase error";
+}
+
 function mapRow(row: Row): Celebration {
   return {
     id: row.id,
@@ -220,3 +235,5 @@ export async function deleteAllSupabaseCelebrations() {
 
   return true;
 }
+
+export { toErrorMessage as getSupabaseErrorMessage };
