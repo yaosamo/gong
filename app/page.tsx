@@ -348,6 +348,7 @@ function layoutFloatingRecords(records: FloatingRecord[]) {
 }
 
 export default function HomePage() {
+  const [isMobile, setIsMobile] = useState(false);
   const [celebrations, setCelebrations] = useState<Celebration[]>([]);
   const [selectedCelebration, setSelectedCelebration] = useState<Celebration | null>(null);
   const [sessionHitCounts, setSessionHitCounts] = useState<Record<string, number>>({});
@@ -381,6 +382,19 @@ export default function HomePage() {
   const [settledPositions, setSettledPositions] = useState<Record<string, SettledPosition>>({});
   const dragStateRef = useRef<DragState>(null);
   const gongAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    function updateIsMobile() {
+      setIsMobile(window.innerWidth <= 900);
+    }
+
+    updateIsMobile();
+    window.addEventListener("resize", updateIsMobile);
+
+    return () => {
+      window.removeEventListener("resize", updateIsMobile);
+    };
+  }, []);
 
   useEffect(() => {
     const headlineTimeoutId = window.setTimeout(() => {
@@ -869,7 +883,7 @@ export default function HomePage() {
             }) satisfies FloatingRecord,
         )
       : []),
-  ]);
+  ]).slice(0, isMobile ? 7 : undefined);
 
   useEffect(() => {
     if (!floatingRecords.length) {
@@ -1250,17 +1264,19 @@ export default function HomePage() {
           ambientConfettiEnabled={ambientConfettiEnabled}
           lightSettings={lightSettings}
           confettiSettings={confettiSettings}
+          isMobile={isMobile}
         />
       </section>
 
       <div
         style={{
           position: "absolute",
-          top: "50%",
-          right: 48,
-          transform: "translateY(-60%)",
+          top: isMobile ? 30 : "50%",
+          right: isMobile ? 20 : 48,
+          left: isMobile ? 20 : "auto",
+          transform: isMobile ? "none" : "translateY(-60%)",
           zIndex: 12,
-          width: "min(520px, 42vw)",
+          width: isMobile ? "min(420px, calc(100vw - 40px))" : "min(520px, 42vw)",
           pointerEvents: "none",
         }}
       >
@@ -1277,7 +1293,7 @@ export default function HomePage() {
               transition:
                 "transform 1000ms cubic-bezier(0.16, 1, 0.3, 1), opacity 1000ms ease-out",
               willChange: "transform, opacity",
-              fontSize: "clamp(44px, 7vw, 108px)",
+              fontSize: isMobile ? "clamp(34px, 10vw, 58px)" : "clamp(44px, 7vw, 108px)",
               lineHeight: 0.9,
               letterSpacing: "-0.06em",
               fontWeight: 500,
@@ -1317,11 +1333,17 @@ export default function HomePage() {
                 left,
                 top,
                 transform: `translate(-50%, -50%) rotate(${rotate}deg)`,
-                maxWidth: record.comment ? "min(360px, 34vw)" : "min(260px, 24vw)",
+                maxWidth: isMobile
+                  ? record.comment
+                    ? "min(280px, 72vw)"
+                    : "min(220px, 58vw)"
+                  : record.comment
+                    ? "min(360px, 34vw)"
+                    : "min(260px, 24vw)",
                 display: "flex",
                 alignItems: "flex-start",
-                gap: 12,
-                padding: "12px 14px",
+                gap: isMobile ? 10 : 12,
+                padding: isMobile ? "10px 12px" : "12px 14px",
                 borderRadius: 16,
                 border: `1px solid ${theme.border}`,
                 background: theme.card,
@@ -1334,7 +1356,9 @@ export default function HomePage() {
               <div
                 aria-hidden="true"
                 style={{
-                  fontSize: getReactionEmojiSize(record.reactions),
+                  fontSize: isMobile
+                    ? Math.max(16, getReactionEmojiSize(record.reactions) - 4)
+                    : getReactionEmojiSize(record.reactions),
                   lineHeight: 1,
                   transform: "translateY(0.18em)",
                   flexShrink: 0,
@@ -1361,7 +1385,7 @@ export default function HomePage() {
                       border: `1px solid ${theme.border}`,
                       background: theme.bubble,
                       boxShadow: "0 1px 0 rgba(255, 255, 255, 0.42) inset",
-                      fontSize: 16,
+                      fontSize: isMobile ? 15 : 16,
                       lineHeight: 1.25,
                       color: theme.text,
                       textWrap: "pretty",
@@ -1378,7 +1402,7 @@ export default function HomePage() {
                 ) : (
                   <div
                     style={{
-                      fontSize: 16,
+                      fontSize: isMobile ? 15 : 16,
                       lineHeight: 1.28,
                       fontWeight: 400,
                       color: theme.text,
@@ -1634,13 +1658,15 @@ export default function HomePage() {
           style={{
             position: "absolute",
             left: "50%",
-            bottom: 28,
+            bottom: isMobile ? 18 : 28,
             transform: "translateX(-50%)",
             zIndex: 20,
             pointerEvents: "auto",
             display: "flex",
             alignItems: "center",
-            gap: 10,
+            gap: isMobile ? 8 : 10,
+            width: isMobile ? "calc(100vw - 28px)" : "auto",
+            justifyContent: "center",
           }}
         >
           <button
@@ -1651,9 +1677,10 @@ export default function HomePage() {
               background: "rgba(255, 255, 255, 0.9)",
               color: "rgba(17, 17, 17, 0.84)",
               borderRadius: 999,
-              padding: "12px 18px",
+              padding: isMobile ? "11px 14px" : "12px 18px",
               boxShadow: "0 10px 24px rgba(17, 24, 39, 0.08)",
               backdropFilter: "blur(12px)",
+              whiteSpace: "nowrap",
             }}
           >
             {showNotes ? "Hide notes" : "Show notes"}
@@ -1666,8 +1693,8 @@ export default function HomePage() {
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 48,
-              height: 48,
+              width: isMobile ? 44 : 48,
+              height: isMobile ? 44 : 48,
               border: "1px solid rgba(16, 17, 18, 0.12)",
               background: "rgba(255, 255, 255, 0.9)",
               color: "rgba(17, 17, 17, 0.84)",

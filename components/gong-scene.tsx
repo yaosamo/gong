@@ -14,8 +14,10 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 
 function GongModel({
   isStriking,
+  isMobile,
 }: {
   isStriking: boolean;
+  isMobile: boolean;
 }) {
   const gongRef = useRef<Group>(null);
   const suspendedRef = useRef<Group>(null);
@@ -62,7 +64,7 @@ function GongModel({
   });
 
   return (
-    <group position={[-1.4, 0.35, 0]} scale={0.49}>
+    <group position={isMobile ? [-0.28, 0.7, 0] : [-1.4, 0.35, 0]} scale={isMobile ? 0.42 : 0.49}>
       <mesh position={[0, 2.38, -0.3]} castShadow receiveShadow>
         <boxGeometry args={[5.8, 0.24, 0.34]} />
         <meshStandardMaterial color="#c63a29" roughness={0.58} />
@@ -210,15 +212,21 @@ function CameraShake({
 
 function CameraIntro({
   controlsRef,
+  initialPosition,
+  introStartPosition,
+  target,
 }: {
   controlsRef: React.RefObject<OrbitControlsImpl | null>;
+  initialPosition: { x: number; y: number; z: number };
+  introStartPosition: { x: number; y: number; z: number };
+  target: [number, number, number];
 }) {
   const { camera } = useThree();
   const progressRef = useRef(0);
 
   useEffect(() => {
-    camera.position.set(-13.4, 3.6, 18.5);
-  }, [camera]);
+    camera.position.set(introStartPosition.x, introStartPosition.y, introStartPosition.z);
+  }, [camera, introStartPosition]);
 
   useFrame((_, delta) => {
     const controls = controlsRef.current;
@@ -231,15 +239,15 @@ function CameraIntro({
     const eased = 1 - Math.pow(1 - progressRef.current, 4);
 
     camera.position.set(
-      -13.4 + (DEFAULT_CAMERA_POSITION.x + 13.4) * eased,
-      3.6 + (DEFAULT_CAMERA_POSITION.y - 3.6) * eased,
-      18.5 + (DEFAULT_CAMERA_POSITION.z - 18.5) * eased,
+      introStartPosition.x + (initialPosition.x - introStartPosition.x) * eased,
+      introStartPosition.y + (initialPosition.y - introStartPosition.y) * eased,
+      introStartPosition.z + (initialPosition.z - introStartPosition.z) * eased,
     );
 
     controls.target.set(
-      0 + (0 * eased),
-      1.35 + (0.35 - 1.35) * eased,
-      0.6 + (0 - 0.6) * eased,
+      target[0],
+      1.35 + (target[1] - 1.35) * eased,
+      0.6 + (target[2] - 0.6) * eased,
     );
     controls.update();
   });
@@ -254,6 +262,7 @@ export function GongScene({
   ambientConfettiEnabled,
   lightSettings,
   confettiSettings,
+  isMobile,
 }: {
   isStriking: boolean;
   onStrike: () => void;
@@ -261,6 +270,7 @@ export function GongScene({
   ambientConfettiEnabled: boolean;
   lightSettings: LightSettings;
   confettiSettings: ConfettiSettings;
+  isMobile: boolean;
 }) {
   const [cursorState, setCursorState] = useState({
     visible: false,
@@ -277,6 +287,13 @@ export function GongScene({
   const confettiRef = useRef<TCanvasConfettiInstance | null>(null);
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const [confettiReady, setConfettiReady] = useState(false);
+  const sceneCamera = isMobile
+    ? { x: -2.9, y: 0.1, z: 7.7 }
+    : DEFAULT_CAMERA_POSITION;
+  const introCamera = isMobile
+    ? { x: -8.6, y: 2.4, z: 13.6 }
+    : { x: -13.4, y: 3.6, z: 18.5 };
+  const orbitTarget: [number, number, number] = isMobile ? [0.18, 0.62, 0] : [0, 0.35, 0];
 
   function fireConfetti() {
     const confetti = confettiRef.current;
@@ -493,8 +510,8 @@ export function GongScene({
             pointerEvents: "none",
             userSelect: "none",
             transform: cursorState.striking
-              ? "translate(-58%, -38%) rotate(-34deg) scale(0.88)"
-              : "translate(-50%, -50%) rotate(-10deg) scale(1)",
+              ? `translate(-58%, -38%) rotate(-34deg) scale(${isMobile ? 0.72 : 0.88})`
+              : `translate(-50%, -50%) rotate(-10deg) scale(${isMobile ? 0.82 : 1})`,
             transformOrigin: "50% 50%",
             transition: "transform 200ms cubic-bezier(0.22, 0.84, 0.24, 1)",
             zIndex: 999,
@@ -505,8 +522,8 @@ export function GongScene({
       ) : null}
       <Canvas
         camera={{
-          position: [DEFAULT_CAMERA_POSITION.x, DEFAULT_CAMERA_POSITION.y, DEFAULT_CAMERA_POSITION.z],
-          fov: 33,
+          position: [sceneCamera.x, sceneCamera.y, sceneCamera.z],
+          fov: isMobile ? 38 : 33,
         }}
         dpr={[1, 1.8]}
         shadows
@@ -542,18 +559,23 @@ export function GongScene({
           position={[lightSettings.pointX, lightSettings.pointY, lightSettings.pointZ]}
         />
         <Environment preset="city" />
-        <CameraIntro controlsRef={controlsRef} />
+        <CameraIntro
+          controlsRef={controlsRef}
+          initialPosition={sceneCamera}
+          introStartPosition={introCamera}
+          target={orbitTarget}
+        />
         <CameraReporter onCameraChange={onCameraChange} />
         <CameraShake isStriking={isStriking} />
-        <GongModel isStriking={isStriking} />
+        <GongModel isStriking={isStriking} isMobile={isMobile} />
         <OrbitControls
           ref={controlsRef}
           enablePan={false}
           enableDamping
           dampingFactor={0.08}
-          target={[0, 0.35, 0]}
-          minDistance={4.8}
-          maxDistance={8.8}
+          target={orbitTarget}
+          minDistance={isMobile ? 5.8 : 4.8}
+          maxDistance={isMobile ? 10.2 : 8.8}
           minPolarAngle={Math.PI * 0.32}
           maxPolarAngle={Math.PI * 0.68}
         />
