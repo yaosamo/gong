@@ -45,6 +45,13 @@ type CelebrationRow = {
   country: string | null;
 };
 
+type ViewerLocation = {
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  locationLabel: string;
+};
+
 type FloatingRecord = {
   id: string;
   title: string;
@@ -353,6 +360,12 @@ export default function HomePage() {
   const [isMobile, setIsMobile] = useState(false);
   const [sessionId, setSessionId] = useState("");
   const [celebrations, setCelebrations] = useState<Celebration[]>([]);
+  const [viewerLocation, setViewerLocation] = useState<ViewerLocation>({
+    city: null,
+    region: null,
+    country: null,
+    locationLabel: "Unknown location",
+  });
   const [selectedCelebration, setSelectedCelebration] = useState<Celebration | null>(null);
   const [sessionHitCounts, setSessionHitCounts] = useState<Record<string, number>>({});
   const [sessionFallbackHits, setSessionFallbackHits] = useState(0);
@@ -448,10 +461,16 @@ export default function HomePage() {
           return;
         }
 
-        const data = (await response.json()) as { celebrations?: Celebration[] };
+        const data = (await response.json()) as {
+          celebrations?: Celebration[];
+          viewerLocation?: ViewerLocation;
+        };
 
         if (!cancelled) {
           setCelebrations(data.celebrations ?? []);
+          if (data.viewerLocation) {
+            setViewerLocation(data.viewerLocation);
+          }
         }
       } catch {
         if (!cancelled) {
@@ -803,6 +822,10 @@ export default function HomePage() {
     return celebration.region || celebration.city || celebration.country || "Oregon";
   }
 
+  function getViewerLocationLabel() {
+    return viewerLocation.region || viewerLocation.city || viewerLocation.country || "Unknown location";
+  }
+
   function getHitCountLabel(celebration: Celebration) {
     const count = sessionHitCounts[celebration.id] ?? 0;
     const suffix = count === 1 ? "time" : "times";
@@ -853,7 +876,7 @@ export default function HomePage() {
     const suffix = fallbackCount === 1 ? "time" : "times";
 
     return {
-      title: formatCelebrationTitle("Oregon", fallbackRecordId),
+      title: formatCelebrationTitle(getViewerLocationLabel(), fallbackRecordId),
       date: formatCelebrationDate(new Date().toISOString()),
     };
   }

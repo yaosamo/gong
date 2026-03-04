@@ -24,22 +24,34 @@ function isProductionRuntime() {
   return process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const viewerLocation = await resolveLocationFromRequest(request);
     const remoteItems = await listSupabaseCelebrations().catch(() => null);
 
     if (remoteItems) {
-      return NextResponse.json({ celebrations: remoteItems });
+      return NextResponse.json({ celebrations: remoteItems, viewerLocation });
     }
 
     if (isProductionRuntime()) {
-      return NextResponse.json({ celebrations: [] });
+      return NextResponse.json({ celebrations: [], viewerLocation });
     }
 
     const items = await listLocalCelebrations();
-    return NextResponse.json({ celebrations: items });
+    return NextResponse.json({ celebrations: items, viewerLocation });
   } catch {
-    return NextResponse.json({ celebrations: [] }, { status: 500 });
+    return NextResponse.json(
+      {
+        celebrations: [],
+        viewerLocation: {
+          city: null,
+          region: null,
+          country: null,
+          locationLabel: "Unknown location",
+        },
+      },
+      { status: 500 },
+    );
   }
 }
 
