@@ -3,7 +3,7 @@ import { buildLocationLabel } from "@/lib/utils";
 import type { Celebration, CelebrationInput, CelebrationPositionInput } from "@/lib/types";
 
 type Row = {
-  id: string;
+  id: string | number;
   name: string;
   comment: string;
   created_at: string;
@@ -15,6 +15,10 @@ type Row = {
   region: string | null;
   country: string | null;
 };
+
+function normalizeId(value: string) {
+  return /^\d+$/.test(value) ? Number(value) : value;
+}
 
 function getClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -48,7 +52,7 @@ function toErrorMessage(error: unknown) {
 
 function mapRow(row: Row): Celebration {
   return {
-    id: row.id,
+    id: String(row.id),
     name: row.name,
     comment: row.comment,
     createdAt: row.created_at,
@@ -126,7 +130,7 @@ export async function deleteSupabaseCelebration(id: string) {
   const { error, count } = await client
     .from("celebrations")
     .delete({ count: "exact" })
-    .eq("id", id);
+    .eq("id", normalizeId(id));
 
   if (error) {
     throw error;
@@ -148,7 +152,7 @@ export async function updateSupabaseCelebration(id: string, input: CelebrationIn
       name: input.name.trim(),
       comment: input.comment.trim(),
     })
-    .eq("id", id)
+    .eq("id", normalizeId(id))
     .select("id, name, comment, created_at, reactions, note_x, note_y, note_rotate, city, region, country")
     .single();
 
@@ -169,7 +173,7 @@ export async function incrementSupabaseCelebrationReaction(id: string) {
   const { data: current, error: currentError } = await client
     .from("celebrations")
     .select("id, name, comment, created_at, reactions, note_x, note_y, note_rotate, city, region, country")
-    .eq("id", id)
+    .eq("id", normalizeId(id))
     .single();
 
   if (currentError) {
@@ -181,7 +185,7 @@ export async function incrementSupabaseCelebrationReaction(id: string) {
   const { data, error } = await client
     .from("celebrations")
     .update({ reactions: nextReactions })
-    .eq("id", id)
+    .eq("id", normalizeId(id))
     .select("id, name, comment, created_at, reactions, note_x, note_y, note_rotate, city, region, country")
     .single();
 
@@ -209,7 +213,7 @@ export async function updateSupabaseCelebrationPosition(
       note_y: position.noteY,
       note_rotate: position.noteRotate,
     })
-    .eq("id", id)
+    .eq("id", normalizeId(id))
     .select("id, name, comment, created_at, reactions, note_x, note_y, note_rotate, city, region, country")
     .single();
 
