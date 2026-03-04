@@ -36,10 +36,107 @@ function makeId() {
   return Math.random().toString(36).slice(2);
 }
 
+function SmoothCursor({ cursor }: { cursor: CursorPresence }) {
+  const [{ x, y }, setPosition] = useState({ x: cursor.x, y: cursor.y });
+  const targetRef = useRef({ x: cursor.x, y: cursor.y });
+
+  useEffect(() => {
+    targetRef.current = { x: cursor.x, y: cursor.y };
+  }, [cursor.x, cursor.y]);
+
+  useEffect(() => {
+    let frameId = 0;
+
+    function tick() {
+      setPosition((current) => {
+        const nextX = current.x + (targetRef.current.x - current.x) * 0.18;
+        const nextY = current.y + (targetRef.current.y - current.y) * 0.18;
+
+        return {
+          x: Math.abs(nextX - targetRef.current.x) < 0.0005 ? targetRef.current.x : nextX,
+          y: Math.abs(nextY - targetRef.current.y) < 0.0005 ? targetRef.current.y : nextY,
+        };
+      });
+
+      frameId = window.requestAnimationFrame(tick);
+    }
+
+    frameId = window.requestAnimationFrame(tick);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, []);
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: `calc(${x * 100}% - 6px)`,
+        top: `calc(${y * 100}% - 8px)`,
+        transform: "translate(-50%, -50%)",
+        transition: "opacity 240ms ease",
+        willChange: "left, top",
+      }}
+    >
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+        <g transform="rotate(-28 13 13)">
+          <rect
+            x="4.2"
+            y="4.8"
+            width="11.2"
+            height="7.2"
+            rx="2.4"
+            fill={cursor.color}
+            stroke="#ffffff"
+            strokeWidth="1.2"
+          />
+          <rect
+            x="12.8"
+            y="10.4"
+            width="9.6"
+            height="3.2"
+            rx="1.6"
+            fill="#7c4a22"
+            stroke="#ffffff"
+            strokeWidth="1.1"
+          />
+          <rect
+            x="18.6"
+            y="8.8"
+            width="2.8"
+            height="6.4"
+            rx="1.4"
+            fill={cursor.color}
+            stroke="#ffffff"
+            strokeWidth="1"
+          />
+        </g>
+      </svg>
+      <div
+        style={{
+          marginTop: 2,
+          marginLeft: 12,
+          display: "inline-flex",
+          borderRadius: 999,
+          padding: "4px 8px",
+          background: cursor.color,
+          color: "#ffffff",
+          fontSize: 12,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {cursor.name}
+      </div>
+    </div>
+  );
+}
+
 export function LiveCursors() {
   const [cursors, setCursors] = useState<CursorPresence[]>([]);
   const idRef = useRef<string>("");
   const colorRef = useRef<string>("");
+  const lastTrackRef = useRef(0);
 
   if (!idRef.current) {
     idRef.current = makeId();
@@ -104,7 +201,15 @@ export function LiveCursors() {
       });
 
     function onMove(event: PointerEvent) {
-      channel.track({
+      const now = performance.now();
+
+      if (now - lastTrackRef.current < 32) {
+        return;
+      }
+
+      lastTrackRef.current = now;
+
+      void channel.track({
         id: idRef.current,
         name: label,
         x: event.clientX / window.innerWidth,
@@ -136,66 +241,7 @@ export function LiveCursors() {
       {cursors
         .filter((cursor) => cursor.id !== idRef.current)
         .map((cursor) => (
-          <div
-            key={cursor.id}
-            style={{
-              position: "absolute",
-              left: `calc(${cursor.x * 100}% - 6px)`,
-              top: `calc(${cursor.y * 100}% - 8px)`,
-              transform: "translate(-50%, -50%)",
-              transition: "left 120ms linear, top 120ms linear, opacity 240ms ease",
-            }}
-          >
-            <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
-              <g transform="rotate(-28 13 13)">
-                <rect
-                  x="4.2"
-                  y="4.8"
-                  width="11.2"
-                  height="7.2"
-                  rx="2.4"
-                  fill={cursor.color}
-                  stroke="#ffffff"
-                  strokeWidth="1.2"
-                />
-                <rect
-                  x="12.8"
-                  y="10.4"
-                  width="9.6"
-                  height="3.2"
-                  rx="1.6"
-                  fill="#7c4a22"
-                  stroke="#ffffff"
-                  strokeWidth="1.1"
-                />
-                <rect
-                  x="18.6"
-                  y="8.8"
-                  width="2.8"
-                  height="6.4"
-                  rx="1.4"
-                  fill={cursor.color}
-                  stroke="#ffffff"
-                  strokeWidth="1"
-                />
-              </g>
-            </svg>
-            <div
-              style={{
-                marginTop: 2,
-                marginLeft: 12,
-                display: "inline-flex",
-                borderRadius: 999,
-                padding: "4px 8px",
-                background: cursor.color,
-                color: "#ffffff",
-                fontSize: 12,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {cursor.name}
-            </div>
-          </div>
+          <SmoothCursor key={cursor.id} cursor={cursor} />
         ))}
     </div>
   );
