@@ -5,6 +5,41 @@ import { getSupabaseBrowserClient } from "@/lib/supabase";
 import type { CursorPresence } from "@/lib/types";
 
 const palette = ["#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#111827"];
+const botDefinitions = [
+  {
+    id: "bot-drift",
+    name: "Drift bot",
+    color: "#f97316",
+    anchorX: 0.28,
+    anchorY: 0.3,
+    radiusX: 0.09,
+    radiusY: 0.07,
+    speed: 0.00024,
+    phase: 0.2,
+  },
+  {
+    id: "bot-echo",
+    name: "Echo bot",
+    color: "#22c55e",
+    anchorX: 0.72,
+    anchorY: 0.36,
+    radiusX: 0.08,
+    radiusY: 0.06,
+    speed: 0.00019,
+    phase: 1.3,
+  },
+  {
+    id: "bot-orbit",
+    name: "Orbit bot",
+    color: "#3b82f6",
+    anchorX: 0.54,
+    anchorY: 0.7,
+    radiusX: 0.11,
+    radiusY: 0.05,
+    speed: 0.00021,
+    phase: 2.1,
+  },
+] as const;
 const cursorNames = [
   "Cool dude",
   "Wizard",
@@ -36,7 +71,52 @@ function makeId() {
   return Math.random().toString(36).slice(2);
 }
 
-function SmoothCursor({ cursor }: { cursor: CursorPresence }) {
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function buildBotCursor(
+  definition: (typeof botDefinitions)[number],
+  timestamp: number,
+): CursorPresence {
+  const angle = timestamp * definition.speed + definition.phase;
+
+  return {
+    id: definition.id,
+    name: definition.name,
+    color: definition.color,
+    x: clamp(definition.anchorX + Math.cos(angle) * definition.radiusX, 0.1, 0.9),
+    y: clamp(definition.anchorY + Math.sin(angle * 1.18) * definition.radiusY, 0.12, 0.88),
+    updatedAt: new Date(timestamp).toISOString(),
+  };
+}
+
+function useBotCursors(enabled: boolean) {
+  const [bots, setBots] = useState<CursorPresence[]>([]);
+
+  useEffect(() => {
+    if (!enabled) {
+      setBots([]);
+      return;
+    }
+
+    function updateBots() {
+      const timestamp = performance.now();
+      setBots(botDefinitions.map((definition) => buildBotCursor(definition, timestamp)));
+    }
+
+    updateBots();
+    const intervalId = window.setInterval(updateBots, 120);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [enabled]);
+
+  return bots;
+}
+
+function SmoothCursor({ cursor, opacity = 1 }: { cursor: CursorPresence; opacity?: number }) {
   const [{ x, y }, setPosition] = useState({ x: cursor.x, y: cursor.y });
   const targetRef = useRef({ x: cursor.x, y: cursor.y });
 
@@ -77,6 +157,7 @@ function SmoothCursor({ cursor }: { cursor: CursorPresence }) {
         transform: "translate(-50%, -50%)",
         transition: "opacity 240ms ease",
         willChange: "left, top",
+        opacity,
       }}
     >
       <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
@@ -228,6 +309,10 @@ export function LiveCursors() {
     };
   }, [label]);
 
+  const remoteCursors = cursors.filter((cursor) => cursor.id !== idRef.current);
+  const botCursors = useBotCursors(remoteCursors.length === 0);
+  const visibleCursors = remoteCursors.length > 0 ? remoteCursors : botCursors;
+
   return (
     <div
       aria-hidden="true"
@@ -238,11 +323,13 @@ export function LiveCursors() {
         zIndex: 20,
       }}
     >
-      {cursors
-        .filter((cursor) => cursor.id !== idRef.current)
-        .map((cursor) => (
-          <SmoothCursor key={cursor.id} cursor={cursor} />
-        ))}
+      {visibleCursors.map((cursor) => (
+        <SmoothCursor
+          key={cursor.id}
+          cursor={cursor}
+          opacity={remoteCursors.length > 0 ? 1 : 0.76}
+        />
+      ))}
     </div>
   );
 }
